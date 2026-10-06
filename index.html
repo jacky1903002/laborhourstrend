@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Enterprise Labor Hours Trend Dashboard</title>
+    <title>Enterprise Labor Hours Analytics Dashboard</title>
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- Chart.js -->
@@ -17,8 +17,39 @@
 </head>
 <body class="bg-slate-50 min-h-screen flex flex-col text-slate-800">
 
-    <!-- 主控台畫面 -->
-    <div id="app-section" class="flex-grow flex flex-col">
+    <!-- 1. 登入畫面 (Firebase Email / Password) -->
+    <div id="login-section" class="flex-grow flex items-center justify-center p-4 bg-gradient-to-br from-slate-900 via-blue-950 to-slate-900">
+        <div class="bg-white/95 backdrop-blur p-8 rounded-2xl shadow-2xl w-full max-w-md border border-slate-100">
+            <div class="text-center mb-8">
+                <div class="inline-flex items-center justify-center w-12 h-12 bg-blue-600 text-white rounded-xl font-bold text-xl mb-3 shadow-lg shadow-blue-500/30">LT</div>
+                <h2 class="text-2xl font-bold text-slate-900">製造工時趨勢系統</h2>
+                <p class="text-sm text-slate-500 mt-1">Enterprise Labor Hours Intelligence</p>
+            </div>
+            
+            <div id="login-error" class="mb-4 p-3 bg-red-50 border border-red-200 text-red-600 text-sm rounded-lg hidden"></div>
+            
+            <div class="space-y-4">
+                <div>
+                    <label class="block text-slate-700 text-xs font-semibold uppercase tracking-wider mb-1.5">電子郵件</label>
+                    <input type="email" id="login-email" class="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-600 text-sm" placeholder="user@feedback.com.tw" value="n1693131@gmail.com">
+                </div>
+                <div>
+                    <label class="block text-slate-700 text-xs font-semibold uppercase tracking-wider mb-1.5">密碼</label>
+                    <input type="password" id="login-password" class="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-600 text-sm" placeholder="••••••••">
+                </div>
+                <button onclick="handleLogin()" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-4 rounded-xl transition shadow-lg shadow-blue-600/20 text-sm">安全登入</button>
+                <div class="relative flex py-2 items-center">
+                    <div class="flex-grow border-t border-slate-200"></div>
+                    <span class="flex-shrink mx-4 text-slate-400 text-xs uppercase">或</span>
+                    <div class="flex-grow border-t border-slate-200"></div>
+                </div>
+                <button onclick="handleDemoLogin()" class="w-full bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold py-2.5 px-4 rounded-xl transition text-sm">快速演示登入 (略過驗證)</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 2. 主控台畫面 (登入後顯示) -->
+    <div id="app-section" class="hidden flex-grow flex flex-col">
         <!-- 企業頂部導覽列 -->
         <header class="bg-slate-900 text-white shadow-md px-8 py-4 flex justify-between items-center sticky top-0 z-50">
             <div class="flex items-center space-x-4">
@@ -29,45 +60,35 @@
                 </div>
             </div>
             <div class="flex items-center space-x-6">
-                <span class="text-sm text-emerald-400 font-medium">● Realtime DB 連線就緒</span>
+                <span id="user-display" class="text-sm text-slate-300 font-medium"></span>
+                <button onclick="handleLogout()" class="bg-slate-800 hover:bg-slate-700 text-red-400 text-sm px-3.5 py-1.5 rounded-xl transition border border-slate-700">登出系統</button>
             </div>
         </header>
 
         <!-- 主要內容區 -->
-        <main class="flex-grow p-8 max-w-7xl mx-auto w-full space-y-8">
+        <main class="flex-grow p-8 max-w-7xl mx-auto w-full space-y-6">
             <!-- 工具列與操作區 -->
             <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-200 flex flex-wrap gap-4 items-center justify-between">
-                <div class="flex items-center space-x-3">
+                <div class="flex items-center space-x-3 flex-wrap gap-y-2">
                     <label class="bg-emerald-600 hover:bg-emerald-700 text-white px-5 py-2.5 rounded-xl cursor-pointer transition text-sm font-semibold shadow-sm flex items-center space-x-2">
                         <span>📥 匯入 Excel 寬表</span>
                         <input type="file" id="excel-file-input" accept=".xlsx, .xls, .csv" class="hidden" onchange="importExcel(event)">
                     </label>
-                    <button onclick="downloadTemplate()" class="bg-amber-600 hover:bg-amber-700 text-white px-4 py-2.5 rounded-xl transition text-sm font-semibold shadow-sm">📥 下載測試範例 Excel</button>
+                    <button onclick="downloadTemplate()" class="bg-amber-600 hover:bg-amber-700 text-white px-4 py-2.5 rounded-xl transition text-sm font-semibold shadow-sm">📥 下載測試範例</button>
                     <button onclick="exportExcel()" class="bg-blue-600 hover:bg-blue-700 text-white px-5 py-2.5 rounded-xl transition text-sm font-semibold shadow-sm">📤 匯出資料</button>
-                    <button onclick="loadSampleData()" class="bg-slate-100 hover:bg-slate-200 text-slate-700 px-4 py-2.5 rounded-xl transition text-sm font-semibold">🔄 載入預設示範數據</button>
+                    <button onclick="loadSampleData()" class="bg-slate-100 hover:bg-slate-200 text-slate-700 px-4 py-2.5 rounded-xl transition text-sm font-semibold">🔄 載入預設數據</button>
                 </div>
                 <div id="status-msg" class="text-xs text-emerald-600 font-medium"></div>
             </div>
 
-            <!-- 總覽 KPI 摘要卡片 -->
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
-                    <p class="text-xs font-bold text-slate-400 uppercase tracking-wider">監控部門總數</p>
-                    <h3 id="kpi-dep-count" class="text-3xl font-bold text-slate-900 mt-2">0</h3>
-                </div>
-                <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
-                    <p class="text-xs font-bold text-slate-400 uppercase tracking-wider">資料月份跨度</p>
-                    <h3 id="kpi-month-range" class="text-3xl font-bold text-blue-600 mt-2">0 個月</h3>
-                </div>
-                <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
-                    <p class="text-xs font-bold text-slate-400 uppercase tracking-wider">全廠累計總工時</p>
-                    <h3 id="kpi-total-hours" class="text-3xl font-bold text-emerald-600 mt-2">0 Hrs</h3>
-                </div>
+            <!-- 2. 各部門分頁導覽列 (Tabs) -->
+            <div class="flex space-x-2 border-b border-slate-200 overflow-x-auto pb-2" id="department-tabs">
+                <!-- 動態生成部門標籤 -->
             </div>
 
-            <!-- 各部門獨立全螢幕折線趨勢圖容器 -->
-            <div id="department-charts-container" class="space-y-8">
-                <!-- 動態生成各部門圖表 -->
+            <!-- 全螢幕部門獨立視圖與分析 -->
+            <div id="department-fullscreen-view" class="space-y-6">
+                <!-- 動態渲染當前部門圖表與數據分析 -->
             </div>
         </main>
     </div>
@@ -75,6 +96,7 @@
     <!-- Firebase SDK & 邏輯 -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+        import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged, signInAnonymously } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
         import { getDatabase, ref, set, get, child } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
 
         const firebaseConfig = {
@@ -89,9 +111,12 @@
         };
 
         const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
         const db = getDatabase(app);
 
-        let chartInstances = {};
+        let activeChart = null;
+        let globalData = [];
+        let currentDepartment = '';
 
         const sampleRawData = [
             { month: 'Jan-25', department: 'metal-1', hours: 18211 }, { month: 'Feb-25', department: 'metal-1', hours: 6475 }, { month: 'Mar-25', department: 'metal-1', hours: 7333 }, { month: 'Apr-25', department: 'metal-1', hours: 18035 }, { month: 'May-25', department: 'metal-1', hours: 7387 }, { month: 'Jun-25', department: 'metal-1', hours: 8642 },
@@ -101,7 +126,45 @@
             { month: 'Jan-25', department: 'post treat', hours: 15415 }, { month: 'Feb-25', department: 'post treat', hours: 10277 }, { month: 'Mar-25', department: 'post treat', hours: 17769 }, { month: 'Apr-25', department: 'post treat', hours: 7559 }, { month: 'May-25', department: 'post treat', hours: 10738 }, { month: 'Jun-25', department: 'post treat', hours: 5174 }
         ];
 
-        async function loadDataAndRenderCharts() {
+        // 登入狀態監聽
+        onAuthStateChanged(auth, (user) => {
+            if (user) {
+                document.getElementById('login-section').classList.add('hidden');
+                document.getElementById('app-section').classList.remove('hidden');
+                document.getElementById('user-display').textContent = `使用者: ${user.email || '示範訪客'}`;
+                loadDataFromCloud();
+            } else {
+                document.getElementById('login-section').classList.remove('hidden');
+                document.getElementById('app-section').classList.add('hidden');
+            }
+        });
+
+        window.handleLogin = async () => {
+            const email = document.getElementById('login-email').value;
+            const password = document.getElementById('login-password').value;
+            const errorDiv = document.getElementById('login-error');
+            try {
+                await signInWithEmailAndPassword(auth, email, password);
+                errorDiv.classList.add('hidden');
+            } catch (error) {
+                errorDiv.textContent = `登入失敗: ${error.message}`;
+                errorDiv.classList.remove('hidden');
+            }
+        };
+
+        window.handleDemoLogin = async () => {
+            try {
+                await signInAnonymously(auth);
+            } catch (err) {
+                console.warn("匿名登入失敗:", err);
+            }
+        };
+
+        window.handleLogout = () => {
+            signOut(auth);
+        };
+
+        async function loadDataFromCloud() {
             try {
                 const dbRef = ref(db);
                 const snapshot = await get(child(dbRef, 'labor_hours_system'));
@@ -112,30 +175,183 @@
                         document.getElementById('last-update-time').textContent = `最後更新: ${dataObj.lastUpdated}`;
                     }
                     if (dataObj.records && Array.isArray(dataObj.records)) {
-                        renderAllDepartments(dataObj.records);
+                        globalData = dataObj.records;
+                        initDashboard(globalData);
                         return;
                     }
                 }
-                renderAllDepartments(sampleRawData);
+                globalData = sampleRawData;
+                initDashboard(globalData);
             } catch (e) {
-                console.warn("載入 Realtime DB 失敗，使用本地示範數據: ", e);
-                renderAllDepartments(sampleRawData);
+                console.warn("載入雲端失敗，使用範例數據:", e);
+                globalData = sampleRawData;
+                initDashboard(globalData);
             }
         }
 
         window.loadSampleData = async () => {
-            renderAllDepartments(sampleRawData);
+            globalData = sampleRawData;
+            initDashboard(globalData);
             document.getElementById('status-msg').textContent = "已載入預設示範數據";
             try {
                 const now = new Date();
                 const timeString = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`;
-                await set(ref(db, 'labor_hours_system'), {
-                    lastUpdated: timeString,
-                    records: sampleRawData
-                });
+                await set(ref(db, 'labor_hours_system'), { lastUpdated: timeString, records: sampleRawData });
+                document.getElementById('last-update-time').textContent = `最後更新: ${timeString}`;
             } catch (err) {
                 console.warn("寫入雲端失敗:", err);
             }
+        };
+
+        // 初始化分頁導覽
+        function initDashboard(data) {
+            const departments = [...new Set(data.map(item => item.department))];
+            if (departments.length === 0) return;
+
+            if (!currentDepartment || !departments.includes(currentDepartment)) {
+                currentDepartment = departments[0]; // 預設選取第一個部門
+            }
+
+            renderTabs(departments);
+            renderDepartmentFullscreenView(currentDepartment, data);
+        }
+
+        function renderTabs(departments) {
+            const tabsContainer = document.getElementById('department-tabs');
+            tabsContainer.innerHTML = '';
+
+            departments.forEach(dept => {
+                const isActive = dept === currentDepartment;
+                const btn = document.createElement('button');
+                btn.className = `px-6 py-3 font-semibold text-sm rounded-xl transition whitespace-nowrap ${isActive ? 'bg-blue-600 text-white shadow-md shadow-blue-600/20' : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'}`;
+                btn.textContent = `📊 ${dept}`;
+                btn.onclick = () => {
+                    currentDepartment = dept;
+                    renderTabs(departments);
+                    renderDepartmentFullscreenView(dept, globalData);
+                };
+                tabsContainer.appendChild(btn);
+            });
+        }
+
+        // 渲染單一部門全螢幕視圖、分析與圖表
+        function renderDepartmentFullscreenView(dept, data) {
+            const months = [...new Set(data.map(item => item.month))];
+            const deptRecords = data.filter(item => item.department === dept);
+            
+            const deptData = months.map(m => {
+                const found = deptRecords.find(item => item.month === m);
+                return found ? Number(found.hours) : 0;
+            });
+
+            // 4. 計算圖表數據分析指標
+            const totalHours = deptData.reduce((a, b) => a + b, 0);
+            const avgHours = Math.round(totalHours / (months.length || 1));
+            const maxHours = Math.max(...deptData);
+            const minHours = Math.min(...deptData);
+            const maxMonth = months[deptData.indexOf(maxHours)] || '-';
+            const minMonth = months[deptData.indexOf(minHours)] || '-';
+
+            const container = document.getElementById('department-fullscreen-view');
+            container.innerHTML = `
+                <!-- 分析數據指標卡片 -->
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-200">
+                        <span class="text-xs font-bold text-slate-400 uppercase tracking-wider">部門累計總工時</span>
+                        <h4 class="text-2xl font-bold text-slate-900 mt-1">${totalHours.toLocaleString()} <span class="text-sm font-normal text-slate-500">Hrs</span></h4>
+                    </div>
+                    <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-200">
+                        <span class="text-xs font-bold text-slate-400 uppercase tracking-wider">月平均工時</span>
+                        <h4 class="text-2xl font-bold text-blue-600 mt-1">${avgHours.toLocaleString()} <span class="text-sm font-normal text-slate-500">Hrs</span></h4>
+                    </div>
+                    <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-200">
+                        <span class="text-xs font-bold text-slate-400 uppercase tracking-wider">最高峰月份 (${maxMonth})</span>
+                        <h4 class="text-2xl font-bold text-emerald-600 mt-1">${maxHours.toLocaleString()} <span class="text-sm font-normal text-slate-500">Hrs</span></h4>
+                    </div>
+                    <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-200">
+                        <span class="text-xs font-bold text-slate-400 uppercase tracking-wider">最低谷月份 (${minMonth})</span>
+                        <h4 class="text-2xl font-bold text-amber-600 mt-1">${minHours.toLocaleString()} <span class="text-sm font-normal text-slate-500">Hrs</span></h4>
+                    </div>
+                </div>
+
+                <!-- 全螢幕圖表卡片 -->
+                <div class="bg-white p-8 rounded-2xl shadow-sm border border-slate-200 space-y-6">
+                    <div class="flex justify-between items-center flex-wrap gap-4">
+                        <div>
+                            <span class="text-xs font-bold text-blue-600 bg-blue-50 px-3 py-1 rounded-full uppercase tracking-wider">Department Fullscreen Analytics</span>
+                            <h3 class="text-2xl font-bold text-slate-900 mt-2">${dept} - 跨年月工時趨勢分析</h3>
+                        </div>
+                        <button onclick="downloadChartPNG()" class="bg-slate-900 hover:bg-slate-800 text-white px-5 py-2.5 rounded-xl transition text-sm font-semibold shadow-sm flex items-center space-x-2">
+                            <span>📸 匯出高畫質 PNG</span>
+                        </button>
+                    </div>
+                    <div class="relative w-full h-[500px]">
+                        <canvas id="fullscreenChart"></canvas>
+                    </div>
+                </div>
+            `;
+
+            const ctx = document.getElementById('fullscreenChart').getContext('2d');
+            if (activeChart) activeChart.destroy();
+
+            activeChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: months,
+                    datasets: [{
+                        label: `${dept} 報工工時`,
+                        data: deptData,
+                        borderColor: '#2563eb',
+                        backgroundColor: 'rgba(37, 99, 235, 0.08)',
+                        borderWidth: 3.5,
+                        fill: true,
+                        tension: 0.25,
+                        pointRadius: 6,
+                        pointHoverRadius: 9,
+                        pointBackgroundColor: '#ffffff',
+                        pointBorderColor: '#2563eb',
+                        pointBorderWidth: 3
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            backgroundColor: '#1e293b',
+                            titleFont: { size: 15, weight: 'bold' },
+                            bodyFont: { size: 14 },
+                            padding: 14,
+                            cornerRadius: 10
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            grid: { color: '#f1f5f9' },
+                            ticks: { font: { size: 13 }, color: '#64748b' },
+                            title: { display: true, text: '工時 (Hours)', color: '#64748b', font: { weight: '600', size: 13 } }
+                        },
+                        x: {
+                            grid: { display: false },
+                            ticks: { font: { size: 13 }, color: '#64748b' },
+                            title: { display: true, text: '月份', color: '#64748b', font: { weight: '600', size: 13 } }
+                        }
+                    }
+                }
+            });
+        }
+
+        // 3. 匯出高畫質 PNG 功能
+        window.downloadChartPNG = () => {
+            const canvas = document.getElementById('fullscreenChart');
+            if (!canvas) return;
+            const imageURL = canvas.toDataURL('image/png', 1.0);
+            const link = document.createElement('a');
+            link.download = `${currentDepartment}_Labor_Hours_Trend.png`;
+            link.href = imageURL;
+            link.click();
         };
 
         // 下載測試範例 Excel
@@ -153,110 +369,7 @@
             XLSX.writeFile(wb, "Test_Labor_Hours_Template.xlsx");
         };
 
-        function renderAllDepartments(data) {
-            const months = [...new Set(data.map(item => item.month))];
-            const departments = [...new Set(data.map(item => item.department))];
-
-            document.getElementById('kpi-dep-count').textContent = departments.length;
-            document.getElementById('kpi-month-range').textContent = `${months.length} 個月`;
-            
-            const totalHours = data.reduce((sum, item) => sum + (Number(item.hours) || 0), 0);
-            document.getElementById('kpi-total-hours').textContent = totalHours.toLocaleString() + ' Hrs';
-
-            const container = document.getElementById('department-charts-container');
-            container.innerHTML = '';
-
-            Object.values(chartInstances).forEach(chart => chart.destroy());
-            chartInstances = {};
-
-            const departmentColors = {
-                'metal-1': '#2563eb',
-                'metal-2': '#7c3aed',
-                'metal-3': '#059669',
-                'lathe': '#d97706',
-                'post treat': '#dc2626'
-            };
-
-            departments.forEach((dept, index) => {
-                const deptData = months.map(m => {
-                    const found = data.find(item => item.month === m && item.department === dept);
-                    return found ? found.hours : 0;
-                });
-
-                const canvasId = `chart-dept-${index}`;
-
-                const cardHTML = `
-                    <div class="bg-white p-8 rounded-2xl shadow-sm border border-slate-200">
-                        <div class="flex justify-between items-center mb-6">
-                            <div>
-                                <span class="text-xs font-bold text-blue-600 bg-blue-50 px-3 py-1 rounded-full uppercase tracking-wider">Department Profile</span>
-                                <h3 class="text-xl font-bold text-slate-900 mt-2">${dept}</h3>
-                            </div>
-                            <div class="text-right">
-                                <span class="text-xs text-slate-400">累計工時</span>
-                                <p class="text-lg font-bold text-slate-700">${deptData.reduce((a,b)=>a+b,0).toLocaleString()} Hrs</p>
-                            </div>
-                        </div>
-                        <div class="relative w-full h-80">
-                            <canvas id="${canvasId}"></canvas>
-                        </div>
-                    </div>
-                `;
-                container.insertAdjacentHTML('beforeend', cardHTML);
-
-                const ctx = document.getElementById(canvasId).getContext('2d');
-                const mainColor = departmentColors[dept] || '#2563eb';
-
-                chartInstances[dept] = new Chart(ctx, {
-                    type: 'line',
-                    data: {
-                        labels: months,
-                        datasets: [{
-                            label: `${dept} - 報工工時趨勢`,
-                            data: deptData,
-                            borderColor: mainColor,
-                            backgroundColor: mainColor + '15',
-                            borderWidth: 3,
-                            fill: true,
-                            tension: 0.2,
-                            pointRadius: 5,
-                            pointHoverRadius: 8,
-                            pointBackgroundColor: '#ffffff',
-                            pointBorderColor: mainColor,
-                            pointBorderWidth: 3
-                        }]
-                    },
-                    options: {
-                        responsive: true,
-                        maintainAspectRatio: false,
-                        plugins: {
-                            legend: { display: false },
-                            tooltip: {
-                                backgroundColor: '#1e293b',
-                                titleFont: { size: 14, weight: 'bold' },
-                                bodyFont: { size: 13 },
-                                padding: 12,
-                                cornerRadius: 8
-                            }
-                        },
-                        scales: {
-                            y: {
-                                beginAtZero: true,
-                                grid: { color: '#f1f5f9' },
-                                ticks: { font: { size: 12 }, color: '#64748b' },
-                                title: { display: true, text: '工時 (Hours)', color: '#64748b', font: { weight: '600' } }
-                            },
-                            x: {
-                                grid: { display: false },
-                                ticks: { font: { size: 12 }, color: '#64748b' }
-                            }
-                        }
-                    }
-                });
-            });
-        }
-
-        // 強固型 Excel 寬表匯入解析
+        // 匯入 Excel 寬表並同步 Realtime DB
         window.importExcel = async (e) => {
             const file = e.target.files[0];
             if (!file) return;
@@ -274,7 +387,6 @@
                         return;
                     }
 
-                    // 尋找表頭列（包含 dep 或部門的列）
                     let headerIndex = 0;
                     for (let i = 0; i < rows.length; i++) {
                         if (rows[i] && rows[i].some(cell => cell && String(cell).toLowerCase().includes('dep'))) {
@@ -289,7 +401,7 @@
                     for (let i = headerIndex + 1; i < rows.length; i++) {
                         const row = rows[i];
                         if (!row || row.length === 0) continue;
-                        const department = row[0]; // 第一欄為部門
+                        const department = row[0];
                         if (!department) continue;
 
                         for (let j = 1; j < headers.length; j++) {
@@ -306,14 +418,13 @@
                     }
 
                     if (parsedData.length === 0) {
-                        alert("無法解析 Excel 資料，請確保第一欄為部門代號，後續欄位為月份！");
+                        alert("無法解析 Excel 資料，請確認第一欄為部門代號！");
                         return;
                     }
 
                     const now = new Date();
                     const timeString = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`;
 
-                    // 同步至 Realtime Database
                     try {
                         await set(ref(db, 'labor_hours_system'), {
                             lastUpdated: timeString,
@@ -321,12 +432,13 @@
                         });
                         document.getElementById('last-update-time').textContent = `最後更新: ${timeString}`;
                     } catch (cloudErr) {
-                        console.warn("Realtime DB 同步失敗:", cloudErr);
+                        console.warn("雲端同步失敗:", cloudErr);
                     }
 
-                    renderAllDepartments(parsedData);
+                    globalData = parsedData;
+                    initDashboard(globalData);
                     document.getElementById('status-msg').textContent = `成功匯入並同步 ${parsedData.length} 筆記錄！`;
-                    document.getElementById('excel-file-input').value = ''; // 重置 input
+                    document.getElementById('excel-file-input').value = '';
                 } catch (err) {
                     console.error(err);
                     alert("Excel 解析失敗，請確認檔案格式是否正確。");
@@ -336,26 +448,15 @@
         };
 
         window.exportExcel = async () => {
-            try {
-                const dbRef = ref(db);
-                const snapshot = await get(child(dbRef, 'labor_hours_system/records'));
-                if (!snapshot.exists()) {
-                    alert("目前雲端無資料可供匯出！");
-                    return;
-                }
-                const data = snapshot.val();
-                const worksheet = XLSX.utils.json_to_sheet(data);
-                const workbook = XLSX.utils.book_new();
-                XLSX.utils.book_append_sheet(workbook, worksheet, "LaborHours");
-                XLSX.writeFile(workbook, "Enterprise_Labor_Hours.xlsx");
-            } catch (err) {
-                console.error(err);
-                alert("匯出失敗");
+            if (globalData.length === 0) {
+                alert("目前無資料可供匯出！");
+                return;
             }
+            const worksheet = XLSX.utils.json_to_sheet(globalData);
+            const workbook = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(workbook, worksheet, "LaborHours");
+            XLSX.writeFile(workbook, "Enterprise_Labor_Hours.xlsx");
         };
-
-        // 初始載入
-        loadDataAndRenderCharts();
     </script>
 </body>
 </html>
