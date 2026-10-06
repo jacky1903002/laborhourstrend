@@ -50,18 +50,18 @@
             <div class="bg-white p-4 rounded-xl shadow flex flex-wrap gap-4 items-center justify-between">
                 <div class="flex items-center space-x-3">
                     <label class="bg-green-600 text-white px-4 py-2 rounded-lg cursor-pointer hover:bg-green-700 transition text-sm font-medium">
-                        匯入 Excel
+                        匯入 Excel (支援寬表格式)
                         <input type="file" id="excel-file-input" accept=".xlsx, .xls" class="hidden" onchange="importExcel(event)">
                     </label>
                     <button onclick="exportExcel()" class="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition text-sm font-medium">匯出 Excel</button>
                 </div>
-                <div class="text-sm text-gray-500">提示：Excel 格式需包含欄位 [month, department, hours]</div>
+                <div class="text-sm text-gray-500">提示：Excel 第一欄為部門名稱 (如 dep / metal-1)，後續欄位為各月份 (如 Jan-25, Feb-25...)</div>
             </div>
 
             <!-- 圖表區塊 -->
             <div class="bg-white p-6 rounded-xl shadow">
-                <h3 class="text-lg font-bold text-gray-800 mb-4">各課別每月工時趨勢</h3>
-                <div class="relative h-80">
+                <h3 class="text-lg font-bold text-gray-800 mb-4">各課別跨年月工時趨勢</h3>
+                <div class="relative h-96">
                     <canvas id="trendChart"></canvas>
                 </div>
             </div>
@@ -72,9 +72,8 @@
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
         import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
-        import { getFirestore, collection, getDocs, setDoc, doc, getDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+        import { getFirestore, collection, getDocs, setDoc, doc, getDoc, deleteDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
-        // 已整合您的 Firebase 專案設定
         const firebaseConfig = {
             apiKey: "AIzaSyB4C6e60S9qHXfN2XJ6WrMz2WLEgUG7mf0",
             authDomain: "laborhour-62067.firebaseapp.com",
@@ -86,175 +85,4 @@
             measurementId: "G-EC67Q7P1FS"
         };
 
-        const app = initializeApp(firebaseConfig);
-        const auth = getAuth(app);
-        const db = getFirestore(app);
-
-        let myChart = null;
-
-        // 監聽登入狀態
-        onAuthStateChanged(auth, (user) => {
-            if (user) {
-                document.getElementById('login-section').classList.add('hidden');
-                document.getElementById('app-section').classList.remove('hidden');
-                document.getElementById('user-display').textContent = `使用者: ${user.email}`;
-                loadDataAndRenderChart();
-            } else {
-                document.getElementById('login-section').classList.remove('hidden');
-                document.getElementById('app-section').classList.add('hidden');
-            }
-        });
-
-        window.handleLogin = async () => {
-            const email = document.getElementById('login-email').value;
-            const password = document.getElementById('login-password').value;
-            const errorDiv = document.getElementById('login-error');
-            try {
-                await signInWithEmailAndPassword(auth, email, password);
-                errorDiv.classList.add('hidden');
-            } catch (error) {
-                errorDiv.textContent = `登入失敗: ${error.message}`;
-                errorDiv.classList.remove('hidden');
-            }
-        };
-
-        window.handleLogout = () => {
-            signOut(auth);
-        };
-
-        // 從 Firestore 讀取資料、更新時間並渲染圖表
-        async function loadDataAndRenderChart() {
-            try {
-                // 讀取最後更新時間記錄
-                const metaDoc = await getDoc(doc(db, "metadata", "status"));
-                if (metaDoc.exists() && metaDoc.data().lastUpdated) {
-                    document.getElementById('last-update-time').textContent = `最後更新: ${metaDoc.data().lastUpdated}`;
-                } else {
-                    document.getElementById('last-update-time').textContent = '最後更新: 尚無記錄';
-                }
-
-                // 讀取工時資料
-                const querySnapshot = await getDocs(collection(db, "labor_hours"));
-                const rawData = [];
-                querySnapshot.forEach((docItem) => {
-                    rawData.push(docItem.data());
-                });
-
-                if (rawData.length === 0) {
-                    renderChart([
-                        { month: '1月', department: '生管課', hours: 160 },
-                        { month: '1月', department: '加工課', hours: 320 },
-                        { month: '1月', department: '組裝課', hours: 280 }
-                    ]);
-                    return;
-                }
-                renderChart(rawData);
-            } catch (e) {
-                console.error("載入失敗: ", e);
-            }
-        }
-
-        // 渲染折線圖
-        function renderChart(data) {
-            const months = ['1月', '2月', '3月', '4月', '5月', '6月', '7月', '8月', '9月', '10月', '11月', '12月'];
-            const departments = [...new Set(data.map(item => item.department))];
-
-            const datasets = departments.map((dept, index) => {
-                const colors = ['#4C72B0', '#DD8452', '#55A868', '#C44E52', '#8172B3'];
-                const deptData = months.map(m => {
-                    const found = data.find(item => item.month === m && item.department === dept);
-                    return found ? found.hours : 0;
-                });
-                return {
-                    label: dept,
-                    data: deptData,
-                    borderColor: colors[index % colors.length],
-                    backgroundColor: colors[index % colors.length],
-                    borderWidth: 2,
-                    tension: 0.1,
-                    pointRadius: 4,
-                    pointHoverRadius: 6
-                };
-            });
-
-            const ctx = document.getElementById('trendChart').getContext('2d');
-            if (myChart) myChart.destroy();
-
-            myChart = new Chart(ctx, {
-                type: 'line',
-                data: { labels: months, datasets: datasets },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    scales: { y: { beginAtZero: true } }
-                }
-            });
-        }
-
-        // 匯入 Excel、更新雲端並記錄當下時間
-        window.importExcel = async (e) => {
-            const file = e.target.files[0];
-            if (!file) return;
-
-            const reader = new FileReader();
-            reader.onload = async function(e) {
-                try {
-                    const data = new Uint8Array(e.target.result);
-                    const workbook = XLSX.read(data, { type: 'array' });
-                    const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
-                    const jsonData = XLSX.utils.sheet_to_json(firstSheet);
-
-                    // 批次寫入工時資料
-                    for (let row of jsonData) {
-                        const docId = `${row.month}_${row.department}`;
-                        await setDoc(doc(db, "labor_hours", docId), {
-                            month: String(row.month),
-                            department: String(row.department),
-                            hours: Number(row.hours)
-                        });
-                    }
-
-                    // 記錄更新時間 (格式: YYYY-MM-DD HH:mm:ss)
-                    const now = new Date();
-                    const timeString = now.getFullYear() + '-' +
-                        String(now.getMonth() + 1).padStart(2, '0') + '-' +
-                        String(now.getDate()).padStart(2, '0') + ' ' +
-                        String(now.getHours()).padStart(2, '0') + ':' +
-                        String(now.getMinutes()).padStart(2, '0') + ':' +
-                        String(now.getSeconds()).padStart(2, '0');
-
-                    await setDoc(doc(db, "metadata", "status"), {
-                        lastUpdated: timeString
-                    });
-
-                    alert("Excel 資料匯入與雲端同步成功！");
-                    loadDataAndRenderChart();
-                } catch (err) {
-                    console.error(err);
-                    alert("匯入失敗，請確認 Excel 欄位包含 [month, department, hours]。");
-                }
-            };
-            reader.readAsArrayBuffer(file);
-        };
-
-        // 匯出 Excel
-        window.exportExcel = async () => {
-            const querySnapshot = await getDocs(collection(db, "labor_hours"));
-            const data = [];
-            querySnapshot.forEach((docItem) => {
-                data.push(docItem.data());
-            });
-
-            if (data.length === 0) {
-                alert("目前無資料可供匯出！");
-                return;
-            }
-
-            const worksheet = XLSX.utils.json_to_sheet(data);
-            const workbook = XLSX.utils.book_new();
-            XLSX.utils.book_append_sheet(workbook, worksheet, "LaborHours");
-            XLSX.writeFile(workbook, "Labor_Hours_Trend.xlsx");
-        };
-    </script>
-</body>
-</html>
+        const app = initializeApp(firebaseConfig
