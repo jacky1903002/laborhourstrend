@@ -81,7 +81,7 @@
                 <div id="status-msg" class="text-xs text-emerald-600 font-medium"></div>
             </div>
 
-            <!-- 2. 各部門分頁導覽列 (Tabs) -->
+            <!-- 各部門分頁導覽列 (Tabs) -->
             <div class="flex space-x-2 border-b border-slate-200 overflow-x-auto pb-2" id="department-tabs">
                 <!-- 動態生成部門標籤 -->
             </div>
@@ -126,7 +126,6 @@
             { month: 'Jan-25', department: 'post treat', hours: 15415 }, { month: 'Feb-25', department: 'post treat', hours: 10277 }, { month: 'Mar-25', department: 'post treat', hours: 17769 }, { month: 'Apr-25', department: 'post treat', hours: 7559 }, { month: 'May-25', department: 'post treat', hours: 10738 }, { month: 'Jun-25', department: 'post treat', hours: 5174 }
         ];
 
-        // 登入狀態監聽
         onAuthStateChanged(auth, (user) => {
             if (user) {
                 document.getElementById('login-section').classList.add('hidden');
@@ -203,13 +202,12 @@
             }
         };
 
-        // 初始化分頁導覽
         function initDashboard(data) {
             const departments = [...new Set(data.map(item => item.department))];
             if (departments.length === 0) return;
 
             if (!currentDepartment || !departments.includes(currentDepartment)) {
-                currentDepartment = departments[0]; // 預設選取第一個部門
+                currentDepartment = departments[0];
             }
 
             renderTabs(departments);
@@ -234,7 +232,6 @@
             });
         }
 
-        // 渲染單一部門全螢幕視圖、分析與圖表
         function renderDepartmentFullscreenView(dept, data) {
             const months = [...new Set(data.map(item => item.month))];
             const deptRecords = data.filter(item => item.department === dept);
@@ -244,7 +241,6 @@
                 return found ? Number(found.hours) : 0;
             });
 
-            // 4. 計算圖表數據分析指標
             const totalHours = deptData.reduce((a, b) => a + b, 0);
             const avgHours = Math.round(totalHours / (months.length || 1));
             const maxHours = Math.max(...deptData);
@@ -254,7 +250,6 @@
 
             const container = document.getElementById('department-fullscreen-view');
             container.innerHTML = `
-                <!-- 分析數據指標卡片 -->
                 <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
                     <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-200">
                         <span class="text-xs font-bold text-slate-400 uppercase tracking-wider">部門累計總工時</span>
@@ -274,7 +269,6 @@
                     </div>
                 </div>
 
-                <!-- 全螢幕圖表卡片 -->
                 <div class="bg-white p-8 rounded-2xl shadow-sm border border-slate-200 space-y-6">
                     <div class="flex justify-between items-center flex-wrap gap-4">
                         <div>
@@ -343,7 +337,6 @@
             });
         }
 
-        // 3. 匯出高畫質 PNG 功能
         window.downloadChartPNG = () => {
             const canvas = document.getElementById('fullscreenChart');
             if (!canvas) return;
@@ -354,7 +347,6 @@
             link.click();
         };
 
-        // 下載測試範例 Excel
         window.downloadTemplate = () => {
             const templateData = [
                 { dep: 'metal-1', 'Jan-25': 18211, 'Feb-25': 6475, 'Mar-25': 7333, 'Apr-25': 18035 },
@@ -369,7 +361,19 @@
             XLSX.writeFile(wb, "Test_Labor_Hours_Template.xlsx");
         };
 
-        // 匯入 Excel 寬表並同步 Realtime DB
+        // 轉換 Excel 日期序號為年月字串的輔助函數
+        function parseExcelDate(serial) {
+            if (typeof serial === 'number' && serial > 30000 && serial < 60000) {
+                const utc_days = Math.floor(serial - 25569);
+                const dateObj = new Date(utc_days * 86400 * 1000);
+                const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+                const mStr = months[dateObj.getUTCMonth()];
+                const yStr = String(dateObj.getUTCFullYear()).slice(-2);
+                return `${mStr}-${yStr}`;
+            }
+            return String(serial).trim();
+        }
+
         window.importExcel = async (e) => {
             const file = e.target.files[0];
             if (!file) return;
@@ -405,11 +409,12 @@
                         if (!department) continue;
 
                         for (let j = 1; j < headers.length; j++) {
-                            const month = headers[j];
+                            const rawMonth = headers[j];
                             const hours = row[j];
-                            if (month && hours !== undefined && hours !== null && !isNaN(hours)) {
+                            if (rawMonth !== undefined && rawMonth !== null && hours !== undefined && hours !== null && !isNaN(hours)) {
+                                const month = parseExcelDate(rawMonth);
                                 parsedData.push({
-                                    month: String(month).trim(),
+                                    month: month,
                                     department: String(department).trim(),
                                     hours: Number(hours)
                                 });
