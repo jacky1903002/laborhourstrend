@@ -75,10 +75,9 @@
                         <input type="file" id="excel-file-input" accept=".xlsx, .xls" class="hidden" onchange="importExcel(event)">
                     </label>
                     <button onclick="exportExcel()" class="bg-blue-600 hover:bg-blue-700 text-white px-5 py-2.5 rounded-xl transition text-sm font-semibold shadow-sm">📤 匯出資料</button>
+                    <button onclick="loadSampleData()" class="bg-slate-100 hover:bg-slate-200 text-slate-700 px-4 py-2.5 rounded-xl transition text-sm font-semibold">🔄 載入預設示範數據</button>
                 </div>
-                <div class="text-xs text-slate-500 bg-slate-50 px-3 py-2 rounded-xl border border-slate-200">
-                    💡 提示：支援第一欄為部門代號（dep）、後續各欄為年月（如 Jan-25, Feb-25...）的企業報表格式。
-                </div>
+                <div id="status-msg" class="text-xs text-blue-600 font-medium"></div>
             </div>
 
             <!-- 總覽 KPI 摘要卡片 -->
@@ -92,7 +91,7 @@
                     <h3 id="kpi-month-range" class="text-3xl font-bold text-blue-600 mt-2">0 個月</h3>
                 </div>
                 <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
-                    <p class="text-xs font-bold text-slate-400 uppercase tracking-wider>全廠累計總工時</p>
+                    <p class="text-xs font-bold text-slate-400 uppercase tracking-wider">全廠累計總工時</p>
                     <h3 id="kpi-total-hours" class="text-3xl font-bold text-emerald-600 mt-2">0 Hrs</h3>
                 </div>
             </div>
@@ -147,7 +146,7 @@
                 await signInWithEmailAndPassword(auth, email, password);
                 errorDiv.classList.add('hidden');
             } catch (error) {
-                errorDiv.textContent = `登入失敗: ${error.message} (若無帳號可點選下方快速演示登入)`;
+                errorDiv.textContent = `登入失敗: ${error.message} (建議點選下方快速演示登入)`;
                 errorDiv.classList.remove('hidden');
             }
         };
@@ -163,6 +162,14 @@
         window.handleLogout = () => {
             signOut(auth);
         };
+
+        const sampleRawData = [
+            { month: 'Jan-25', department: 'metal-1', hours: 18211 }, { month: 'Feb-25', department: 'metal-1', hours: 6475 }, { month: 'Mar-25', department: 'metal-1', hours: 7333 }, { month: 'Apr-25', department: 'metal-1', hours: 18035 },
+            { month: 'Jan-25', department: 'metal-2', hours: 11841 }, { month: 'Feb-25', department: 'metal-2', hours: 8641 }, { month: 'Mar-25', department: 'metal-2', hours: 3842 }, { month: 'Apr-25', department: 'metal-2', hours: 14206 },
+            { month: 'Jan-25', department: 'metal-3', hours: 16702 }, { month: 'Feb-25', department: 'metal-3', hours: 18020 }, { month: 'Mar-25', department: 'metal-3', hours: 18674 }, { month: 'Apr-25', department: 'metal-3', hours: 14188 },
+            { month: 'Jan-25', department: 'lathe', hours: 6821 }, { month: 'Feb-25', department: 'lathe', hours: 6332 }, { month: 'Mar-25', department: 'lathe', hours: 3897 }, { month: 'Apr-25', department: 'lathe', hours: 12695 },
+            { month: 'Jan-25', department: 'post treat', hours: 15415 }, { month: 'Feb-25', department: 'post treat', hours: 10277 }, { month: 'Mar-25', department: 'post treat', hours: 17769 }, { month: 'Apr-25', department: 'post treat', hours: 7559 }
+        ];
 
         async function loadDataAndRenderCharts() {
             try {
@@ -180,30 +187,25 @@
                 });
 
                 if (rawData.length === 0) {
-                    // 預設示範資料
-                    renderAllDepartments([
-                        { month: 'Jan-25', department: 'metal-1', hours: 18211 },
-                        { month: 'Feb-25', department: 'metal-1', hours: 6475 },
-                        { month: 'Mar-25', department: 'metal-1', hours: 7333 },
-                        { month: 'Jan-25', department: 'metal-2', hours: 11841 },
-                        { month: 'Feb-25', department: 'metal-2', hours: 8641 },
-                        { month: 'Mar-25', department: 'metal-2', hours: 3842 },
-                        { month: 'Jan-25', department: 'lathe', hours: 6821 },
-                        { month: 'Feb-25', department: 'lathe', hours: 6332 }
-                    ]);
+                    renderAllDepartments(sampleRawData);
                     return;
                 }
                 renderAllDepartments(rawData);
             } catch (e) {
-                console.error("載入失敗: ", e);
+                console.error("載入失敗，採用示範資料: ", e);
+                renderAllDepartments(sampleRawData);
             }
         }
+
+        window.loadSampleData = () => {
+            renderAllDepartments(sampleRawData);
+            document.getElementById('status-msg').textContent = "已載入預設示範數據";
+        };
 
         function renderAllDepartments(data) {
             const months = [...new Set(data.map(item => item.month))];
             const departments = [...new Set(data.map(item => item.department))];
 
-            // 更新 KPI 數值
             document.getElementById('kpi-dep-count').textContent = departments.length;
             document.getElementById('kpi-month-range').textContent = `${months.length} 個月`;
             
@@ -213,7 +215,6 @@
             const container = document.getElementById('department-charts-container');
             container.innerHTML = '';
 
-            // 銷毀舊圖表實例
             Object.values(chartInstances).forEach(chart => chart.destroy());
             chartInstances = {};
 
@@ -225,14 +226,12 @@
                 'post treat': '#dc2626'
             };
 
-            // 針對每一個部門各做一頁全寬卡片與趨勢圖
             departments.forEach((dept, index) => {
                 const deptData = months.map(m => {
                     const found = data.find(item => item.month === m && item.department === dept);
                     return found ? found.hours : 0;
                 });
 
-                const cardId = `dept-card-${index}`;
                 const canvasId = `chart-dept-${index}`;
 
                 const cardHTML = `
@@ -314,80 +313,4 @@
             reader.onload = async function(e) {
                 try {
                     const data = new Uint8Array(e.target.result);
-                    const workbook = XLSX.read(data, { type: 'array' });
-                    const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
-                    const rows = XLSX.utils.sheet_to_json(firstSheet, { header: 1 });
-                    
-                    if (rows.length < 2) {
-                        alert("Excel 檔案內容不足！");
-                        return;
-                    }
-
-                    const headers = rows[0];
-                    
-                    const oldSnapshot = await getDocs(collection(db, "labor_hours"));
-                    for (let d of oldSnapshot.docs) {
-                        await deleteDoc(d.ref);
-                    }
-
-                    for (let i = 1; i < rows.length; i++) {
-                        const row = rows[i];
-                        const department = row[0];
-                        if (!department) continue;
-
-                        for (let j = 1; j < headers.length; j++) {
-                            const month = headers[j];
-                            const hours = row[j];
-                            if (month && hours !== undefined) {
-                                const docId = `${month}_${department}`;
-                                await setDoc(doc(db, "labor_hours", docId), {
-                                    month: String(month),
-                                    department: String(department),
-                                    hours: Number(hours)
-                                });
-                            }
-                        }
-                    }
-
-                    const now = new Date();
-                    const timeString = now.getFullYear() + '-' +
-                        String(now.getMonth() + 1).padStart(2, '0') + '-' +
-                        String(now.getDate()).padStart(2, '0') + ' ' +
-                        String(now.getHours()).padStart(2, '0') + ':' +
-                        String(now.getMinutes()).padStart(2, '0') + ':' +
-                        String(now.getSeconds()).padStart(2, '0');
-
-                    await setDoc(doc(db, "metadata", "status"), {
-                        lastUpdated: timeString
-                    });
-
-                    alert("Excel 寬表資料匯入與雲端同步成功！");
-                    loadDataAndRenderCharts();
-                } catch (err) {
-                    console.error(err);
-                    alert("匯入失敗，請確認格式是否正確。");
-                }
-            };
-            reader.readAsArrayBuffer(file);
-        };
-
-        window.exportExcel = async () => {
-            const querySnapshot = await getDocs(collection(db, "labor_hours"));
-            const data = [];
-            querySnapshot.forEach((docItem) => {
-                data.push(docItem.data());
-            });
-
-            if (data.length === 0) {
-                alert("目前無資料可供匯出！");
-                return;
-            }
-
-            const worksheet = XLSX.utils.json_to_sheet(data);
-            const workbook = XLSX.utils.book_new();
-            XLSX.utils.book_append_sheet(workbook, worksheet, "LaborHours");
-            XLSX.writeFile(workbook, "Enterprise_Labor_Hours.xlsx");
-        };
-    </script>
-</body>
-</html>
+                    const workbook = XLSX.read
