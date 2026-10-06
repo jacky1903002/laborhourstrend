@@ -39,9 +39,10 @@
             <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-200 flex flex-wrap gap-4 items-center justify-between">
                 <div class="flex items-center space-x-3">
                     <label class="bg-emerald-600 hover:bg-emerald-700 text-white px-5 py-2.5 rounded-xl cursor-pointer transition text-sm font-semibold shadow-sm flex items-center space-x-2">
-                        <span>📥 匯入 Excel 寬表 (同步至 Realtime DB)</span>
-                        <input type="file" id="excel-file-input" accept=".xlsx, .xls" class="hidden" onchange="importExcel(event)">
+                        <span>📥 匯入 Excel 寬表</span>
+                        <input type="file" id="excel-file-input" accept=".xlsx, .xls, .csv" class="hidden" onchange="importExcel(event)">
                     </label>
+                    <button onclick="downloadTemplate()" class="bg-amber-600 hover:bg-amber-700 text-white px-4 py-2.5 rounded-xl transition text-sm font-semibold shadow-sm">📥 下載測試範例 Excel</button>
                     <button onclick="exportExcel()" class="bg-blue-600 hover:bg-blue-700 text-white px-5 py-2.5 rounded-xl transition text-sm font-semibold shadow-sm">📤 匯出資料</button>
                     <button onclick="loadSampleData()" class="bg-slate-100 hover:bg-slate-200 text-slate-700 px-4 py-2.5 rounded-xl transition text-sm font-semibold">🔄 載入預設示範數據</button>
                 </div>
@@ -56,4 +57,305 @@
                 </div>
                 <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
                     <p class="text-xs font-bold text-slate-400 uppercase tracking-wider">資料月份跨度</p>
-                    <h3 id="kpi-month-range" class="text-3xl font-bold text-blue-600 mt-2">0 個月
+                    <h3 id="kpi-month-range" class="text-3xl font-bold text-blue-600 mt-2">0 個月</h3>
+                </div>
+                <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
+                    <p class="text-xs font-bold text-slate-400 uppercase tracking-wider">全廠累計總工時</p>
+                    <h3 id="kpi-total-hours" class="text-3xl font-bold text-emerald-600 mt-2">0 Hrs</h3>
+                </div>
+            </div>
+
+            <!-- 各部門獨立全螢幕折線趨勢圖容器 -->
+            <div id="department-charts-container" class="space-y-8">
+                <!-- 動態生成各部門圖表 -->
+            </div>
+        </main>
+    </div>
+
+    <!-- Firebase SDK & 邏輯 -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+        import { getDatabase, ref, set, get, child } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyB4C6e60S9qHXfN2XJ6WrMz2WLEgUG7mf0",
+            authDomain: "laborhour-62067.firebaseapp.com",
+            databaseURL: "https://laborhour-62067-default-rtdb.firebaseio.com",
+            projectId: "laborhour-62067",
+            storageBucket: "laborhour-62067.firebasestorage.app",
+            messagingSenderId: "1022402354215",
+            appId: "1:1022402354215:web:812f44fe1ee895ebdb0202",
+            measurementId: "G-EC67Q7P1FS"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const db = getDatabase(app);
+
+        let chartInstances = {};
+
+        const sampleRawData = [
+            { month: 'Jan-25', department: 'metal-1', hours: 18211 }, { month: 'Feb-25', department: 'metal-1', hours: 6475 }, { month: 'Mar-25', department: 'metal-1', hours: 7333 }, { month: 'Apr-25', department: 'metal-1', hours: 18035 }, { month: 'May-25', department: 'metal-1', hours: 7387 }, { month: 'Jun-25', department: 'metal-1', hours: 8642 },
+            { month: 'Jan-25', department: 'metal-2', hours: 11841 }, { month: 'Feb-25', department: 'metal-2', hours: 8641 }, { month: 'Mar-25', department: 'metal-2', hours: 3842 }, { month: 'Apr-25', department: 'metal-2', hours: 14206 }, { month: 'May-25', department: 'metal-2', hours: 14869 }, { month: 'Jun-25', department: 'metal-2', hours: 12335 },
+            { month: 'Jan-25', department: 'metal-3', hours: 16702 }, { month: 'Feb-25', department: 'metal-3', hours: 18020 }, { month: 'Mar-25', department: 'metal-3', hours: 18674 }, { month: 'Apr-25', department: 'metal-3', hours: 14188 }, { month: 'May-25', department: 'metal-3', hours: 13646 }, { month: 'Jun-25', department: 'metal-3', hours: 5753 },
+            { month: 'Jan-25', department: 'lathe', hours: 6821 }, { month: 'Feb-25', department: 'lathe', hours: 6332 }, { month: 'Mar-25', department: 'lathe', hours: 3897 }, { month: 'Apr-25', department: 'lathe', hours: 12695 }, { month: 'May-25', department: 'lathe', hours: 10128 }, { month: 'Jun-25', department: 'lathe', hours: 8197 },
+            { month: 'Jan-25', department: 'post treat', hours: 15415 }, { month: 'Feb-25', department: 'post treat', hours: 10277 }, { month: 'Mar-25', department: 'post treat', hours: 17769 }, { month: 'Apr-25', department: 'post treat', hours: 7559 }, { month: 'May-25', department: 'post treat', hours: 10738 }, { month: 'Jun-25', department: 'post treat', hours: 5174 }
+        ];
+
+        async function loadDataAndRenderCharts() {
+            try {
+                const dbRef = ref(db);
+                const snapshot = await get(child(dbRef, 'labor_hours_system'));
+                
+                if (snapshot.exists()) {
+                    const dataObj = snapshot.val();
+                    if (dataObj.lastUpdated) {
+                        document.getElementById('last-update-time').textContent = `最後更新: ${dataObj.lastUpdated}`;
+                    }
+                    if (dataObj.records && Array.isArray(dataObj.records)) {
+                        renderAllDepartments(dataObj.records);
+                        return;
+                    }
+                }
+                renderAllDepartments(sampleRawData);
+            } catch (e) {
+                console.warn("載入 Realtime DB 失敗，使用本地示範數據: ", e);
+                renderAllDepartments(sampleRawData);
+            }
+        }
+
+        window.loadSampleData = async () => {
+            renderAllDepartments(sampleRawData);
+            document.getElementById('status-msg').textContent = "已載入預設示範數據";
+            try {
+                const now = new Date();
+                const timeString = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`;
+                await set(ref(db, 'labor_hours_system'), {
+                    lastUpdated: timeString,
+                    records: sampleRawData
+                });
+            } catch (err) {
+                console.warn("寫入雲端失敗:", err);
+            }
+        };
+
+        // 下載測試範例 Excel
+        window.downloadTemplate = () => {
+            const templateData = [
+                { dep: 'metal-1', 'Jan-25': 18211, 'Feb-25': 6475, 'Mar-25': 7333, 'Apr-25': 18035 },
+                { dep: 'metal-2', 'Jan-25': 11841, 'Feb-25': 8641, 'Mar-25': 3842, 'Apr-25': 14206 },
+                { dep: 'metal-3', 'Jan-25': 16702, 'Feb-25': 18020, 'Mar-25': 18674, 'Apr-25': 14188 },
+                { dep: 'lathe', 'Jan-25': 6821, 'Feb-25': 6332, 'Mar-25': 3897, 'Apr-25': 12695 },
+                { dep: 'post treat', 'Jan-25': 15415, 'Feb-25': 10277, 'Mar-25': 17769, 'Apr-25': 7559 }
+            ];
+            const ws = XLSX.utils.json_to_sheet(templateData);
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, "LaborHours");
+            XLSX.writeFile(wb, "Test_Labor_Hours_Template.xlsx");
+        };
+
+        function renderAllDepartments(data) {
+            const months = [...new Set(data.map(item => item.month))];
+            const departments = [...new Set(data.map(item => item.department))];
+
+            document.getElementById('kpi-dep-count').textContent = departments.length;
+            document.getElementById('kpi-month-range').textContent = `${months.length} 個月`;
+            
+            const totalHours = data.reduce((sum, item) => sum + (Number(item.hours) || 0), 0);
+            document.getElementById('kpi-total-hours').textContent = totalHours.toLocaleString() + ' Hrs';
+
+            const container = document.getElementById('department-charts-container');
+            container.innerHTML = '';
+
+            Object.values(chartInstances).forEach(chart => chart.destroy());
+            chartInstances = {};
+
+            const departmentColors = {
+                'metal-1': '#2563eb',
+                'metal-2': '#7c3aed',
+                'metal-3': '#059669',
+                'lathe': '#d97706',
+                'post treat': '#dc2626'
+            };
+
+            departments.forEach((dept, index) => {
+                const deptData = months.map(m => {
+                    const found = data.find(item => item.month === m && item.department === dept);
+                    return found ? found.hours : 0;
+                });
+
+                const canvasId = `chart-dept-${index}`;
+
+                const cardHTML = `
+                    <div class="bg-white p-8 rounded-2xl shadow-sm border border-slate-200">
+                        <div class="flex justify-between items-center mb-6">
+                            <div>
+                                <span class="text-xs font-bold text-blue-600 bg-blue-50 px-3 py-1 rounded-full uppercase tracking-wider">Department Profile</span>
+                                <h3 class="text-xl font-bold text-slate-900 mt-2">${dept}</h3>
+                            </div>
+                            <div class="text-right">
+                                <span class="text-xs text-slate-400">累計工時</span>
+                                <p class="text-lg font-bold text-slate-700">${deptData.reduce((a,b)=>a+b,0).toLocaleString()} Hrs</p>
+                            </div>
+                        </div>
+                        <div class="relative w-full h-80">
+                            <canvas id="${canvasId}"></canvas>
+                        </div>
+                    </div>
+                `;
+                container.insertAdjacentHTML('beforeend', cardHTML);
+
+                const ctx = document.getElementById(canvasId).getContext('2d');
+                const mainColor = departmentColors[dept] || '#2563eb';
+
+                chartInstances[dept] = new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        labels: months,
+                        datasets: [{
+                            label: `${dept} - 報工工時趨勢`,
+                            data: deptData,
+                            borderColor: mainColor,
+                            backgroundColor: mainColor + '15',
+                            borderWidth: 3,
+                            fill: true,
+                            tension: 0.2,
+                            pointRadius: 5,
+                            pointHoverRadius: 8,
+                            pointBackgroundColor: '#ffffff',
+                            pointBorderColor: mainColor,
+                            pointBorderWidth: 3
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: { display: false },
+                            tooltip: {
+                                backgroundColor: '#1e293b',
+                                titleFont: { size: 14, weight: 'bold' },
+                                bodyFont: { size: 13 },
+                                padding: 12,
+                                cornerRadius: 8
+                            }
+                        },
+                        scales: {
+                            y: {
+                                beginAtZero: true,
+                                grid: { color: '#f1f5f9' },
+                                ticks: { font: { size: 12 }, color: '#64748b' },
+                                title: { display: true, text: '工時 (Hours)', color: '#64748b', font: { weight: '600' } }
+                            },
+                            x: {
+                                grid: { display: false },
+                                ticks: { font: { size: 12 }, color: '#64748b' }
+                            }
+                        }
+                    }
+                });
+            });
+        }
+
+        // 強固型 Excel 寬表匯入解析
+        window.importExcel = async (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = async function(e) {
+                try {
+                    const data = new Uint8Array(e.target.result);
+                    const workbook = XLSX.read(data, { type: 'array' });
+                    const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+                    const rows = XLSX.utils.sheet_to_json(firstSheet, { header: 1 });
+                    
+                    if (rows.length < 2) {
+                        alert("Excel 檔案內容不足！");
+                        return;
+                    }
+
+                    // 尋找表頭列（包含 dep 或部門的列）
+                    let headerIndex = 0;
+                    for (let i = 0; i < rows.length; i++) {
+                        if (rows[i] && rows[i].some(cell => cell && String(cell).toLowerCase().includes('dep'))) {
+                            headerIndex = i;
+                            break;
+                        }
+                    }
+
+                    const headers = rows[headerIndex];
+                    const parsedData = [];
+
+                    for (let i = headerIndex + 1; i < rows.length; i++) {
+                        const row = rows[i];
+                        if (!row || row.length === 0) continue;
+                        const department = row[0]; // 第一欄為部門
+                        if (!department) continue;
+
+                        for (let j = 1; j < headers.length; j++) {
+                            const month = headers[j];
+                            const hours = row[j];
+                            if (month && hours !== undefined && hours !== null && !isNaN(hours)) {
+                                parsedData.push({
+                                    month: String(month).trim(),
+                                    department: String(department).trim(),
+                                    hours: Number(hours)
+                                });
+                            }
+                        }
+                    }
+
+                    if (parsedData.length === 0) {
+                        alert("無法解析 Excel 資料，請確保第一欄為部門代號，後續欄位為月份！");
+                        return;
+                    }
+
+                    const now = new Date();
+                    const timeString = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`;
+
+                    // 同步至 Realtime Database
+                    try {
+                        await set(ref(db, 'labor_hours_system'), {
+                            lastUpdated: timeString,
+                            records: parsedData
+                        });
+                        document.getElementById('last-update-time').textContent = `最後更新: ${timeString}`;
+                    } catch (cloudErr) {
+                        console.warn("Realtime DB 同步失敗:", cloudErr);
+                    }
+
+                    renderAllDepartments(parsedData);
+                    document.getElementById('status-msg').textContent = `成功匯入並同步 ${parsedData.length} 筆記錄！`;
+                    document.getElementById('excel-file-input').value = ''; // 重置 input
+                } catch (err) {
+                    console.error(err);
+                    alert("Excel 解析失敗，請確認檔案格式是否正確。");
+                }
+            };
+            reader.readAsArrayBuffer(file);
+        };
+
+        window.exportExcel = async () => {
+            try {
+                const dbRef = ref(db);
+                const snapshot = await get(child(dbRef, 'labor_hours_system/records'));
+                if (!snapshot.exists()) {
+                    alert("目前雲端無資料可供匯出！");
+                    return;
+                }
+                const data = snapshot.val();
+                const worksheet = XLSX.utils.json_to_sheet(data);
+                const workbook = XLSX.utils.book_new();
+                XLSX.utils.book_append_sheet(workbook, worksheet, "LaborHours");
+                XLSX.writeFile(workbook, "Enterprise_Labor_Hours.xlsx");
+            } catch (err) {
+                console.error(err);
+                alert("匯出失敗");
+            }
+        };
+
+        // 初始載入
+        loadDataAndRenderCharts();
+    </script>
+</body>
+</html>
