@@ -11,7 +11,7 @@
     <!-- SheetJS (xlsx) -->
     <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
         body { font-family: 'Inter', sans-serif; }
     </style>
 </head>
@@ -120,26 +120,10 @@
 
         // 各站點稼動率計算係數對照表
         const utilFactorMap = {
-            'metal-1': 0.81,
-            'metal-2': 0.82,
-            'metal-3': 0.79,
-            'lathe': 0.85,
-            'post treat': 0.89,
-            'clean': 0.87,
-            'assembly': 0.81,
-            'edm': 0.79,
-            'grinding': 0.84,
-            'graphite': 0.89,
-            'package': 0.88,
-            'inspection': 0.86,
-            'lapping': 0.81,
-            'enp': 0.75,
-            'coating': 0.71,
-            'welding': 0.61,
-            'leaktest': 0.62,
-            'anodizing': 0.68,
-            'passivation': 0.69,
-            'ep': 0.67
+            'metal-1': 0.81, 'metal-2': 0.82, 'metal-3': 0.79, 'lathe': 0.85, 'post treat': 0.89,
+            'clean': 0.87, 'assembly': 0.81, 'edm': 0.79, 'grinding': 0.84, 'graphite': 0.89,
+            'package': 0.88, 'inspection': 0.86, 'lapping': 0.81, 'enp': 0.75, 'coating': 0.71,
+            'welding': 0.61, 'leaktest': 0.62, 'anodizing': 0.68, 'passivation': 0.69, 'ep': 0.67
         };
 
         const sampleRawData = [
@@ -272,12 +256,10 @@
             const maxMonth = months[deptData.indexOf(maxHours)] || '-';
             const minMonth = months[deptData.indexOf(minHours)] || '-';
 
-            // 計算每月稼動率 [該月工時 / 分析區間內最大工時] * 係數
-            const factor = utilFactorMap[dept.toLowerCase()] || 0.80; // 若不在列表中預設 0.80
+            const factor = utilFactorMap[dept.toLowerCase()] || 0.80;
             const utilizationData = deptData.map(hours => {
                 if (maxHours === 0) return 0;
-                const util = (hours / maxHours) * factor * 100; // 轉換為百分比數字 (0-100)
-                return Number(util.toFixed(1));
+                return Number(((hours / maxHours) * factor * 100).toFixed(1));
             });
 
             const avgUtil = utilizationData.length > 0 ? (utilizationData.reduce((a, b) => a + b, 0) / utilizationData.length).toFixed(1) : '0';
@@ -286,47 +268,76 @@
             container.innerHTML = `
                 <div class="grid grid-cols-2 md:grid-cols-5 gap-4">
                     <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-200">
-                        <span class="text-xs font-bold text-slate-400 uppercase tracking-wider">部門累計總工時</span>
-                        <h4 class="text-2xl font-bold text-slate-900 mt-1">${totalHours.toLocaleString()} <span class="text-sm font-normal text-slate-500">Hrs</span></h4>
+                        <span class="text-xs font-bold text-slate-500 uppercase tracking-wider">部門累計總工時</span>
+                        <h4 class="text-2xl font-black text-slate-900 mt-1">${totalHours.toLocaleString()} <span class="text-sm font-normal text-slate-500">Hrs</span></h4>
                     </div>
                     <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-200">
-                        <span class="text-xs font-bold text-slate-400 uppercase tracking-wider">月平均工時</span>
-                        <h4 class="text-2xl font-bold text-blue-600 mt-1">${avgHours.toLocaleString()} <span class="text-sm font-normal text-slate-500">Hrs</span></h4>
+                        <span class="text-xs font-bold text-slate-500 uppercase tracking-wider">月平均工時</span>
+                        <h4 class="text-2xl font-black text-blue-700 mt-1">${avgHours.toLocaleString()} <span class="text-sm font-normal text-slate-500">Hrs</span></h4>
                     </div>
                     <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-200">
-                        <span class="text-xs font-bold text-slate-400 uppercase tracking-wider">平均稼動率</span>
-                        <h4 class="text-2xl font-bold text-purple-600 mt-1">${avgUtil}%</h4>
+                        <span class="text-xs font-bold text-slate-500 uppercase tracking-wider">平均稼動率</span>
+                        <h4 class="text-2xl font-black text-indigo-700 mt-1">${avgUtil}%</h4>
                     </div>
                     <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-200">
-                        <span class="text-xs font-bold text-slate-400 uppercase tracking-wider">最高峰月份 (${maxMonth})</span>
-                        <h4 class="text-2xl font-bold text-emerald-600 mt-1">${maxHours.toLocaleString()} <span class="text-sm font-normal text-slate-500">Hrs</span></h4>
+                        <span class="text-xs font-bold text-slate-500 uppercase tracking-wider">最高峰月份 (${maxMonth})</span>
+                        <h4 class="text-2xl font-black text-emerald-700 mt-1">${maxHours.toLocaleString()} <span class="text-sm font-normal text-slate-500">Hrs</span></h4>
                     </div>
                     <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-200">
-                        <span class="text-xs font-bold text-slate-400 uppercase tracking-wider">最低谷月份 (${minMonth})</span>
-                        <h4 class="text-2xl font-bold text-amber-600 mt-1">${minHours.toLocaleString()} <span class="text-sm font-normal text-slate-500">Hrs</span></h4>
+                        <span class="text-xs font-bold text-slate-500 uppercase tracking-wider">最低谷月份 (${minMonth})</span>
+                        <h4 class="text-2xl font-black text-amber-700 mt-1">${minHours.toLocaleString()} <span class="text-sm font-normal text-slate-500">Hrs</span></h4>
                     </div>
                 </div>
 
                 <div class="bg-white p-8 rounded-2xl shadow-sm border border-slate-200 space-y-6">
-                    <div class="flex justify-between items-center flex-wrap gap-4">
+                    <div class="flex justify-between items-center flex-wrap gap-4 border-b border-slate-100 pb-4">
                         <div>
-                            <span class="text-xs font-bold text-blue-600 bg-blue-50 px-3 py-1 rounded-full uppercase tracking-wider">Department Fullscreen Analytics</span>
-                            <h3 class="text-2xl font-bold text-slate-900 mt-2">${dept} - 跨年月工時與稼動率分析</h3>
+                            <span class="text-xs font-bold text-blue-700 bg-blue-100 px-3 py-1 rounded-full uppercase tracking-wider">Department Fullscreen Analytics</span>
+                            <h3 class="text-2xl font-black text-slate-900 mt-2">${dept} - 跨年月工時與稼動率分析</h3>
                         </div>
-                        <button onclick="downloadChartPNG()" class="bg-slate-900 hover:bg-slate-800 text-white px-5 py-2.5 rounded-xl transition text-sm font-semibold shadow-sm flex items-center space-x-2">
-                            <span>📸 匯出高畫質 PNG</span>
-                        </button>
+                        
+                        <!-- 控制按鈕區：工時隱藏、稼動率隱藏、下載 PNG -->
+                        <div class="flex items-center space-x-3 flex-wrap gap-y-2">
+                            <label class="flex items-center space-x-2 bg-blue-50 border border-blue-200 text-blue-900 px-4 py-2 rounded-xl text-sm font-bold cursor-pointer hover:bg-blue-100 transition">
+                                <input type="checkbox" id="toggle-hours-cb" checked onchange="toggleDataset(0, this.checked)" class="w-4 h-4 text-blue-600 rounded">
+                                <span>顯示工時折線</span>
+                            </label>
+
+                            <label class="flex items-center space-x-2 bg-indigo-50 border border-indigo-200 text-indigo-900 px-4 py-2 rounded-xl text-sm font-bold cursor-pointer hover:bg-indigo-100 transition">
+                                <input type="checkbox" id="toggle-util-cb" checked onchange="toggleDataset(1, this.checked)" class="w-4 h-4 text-indigo-600 rounded">
+                                <span>顯示稼動率柱狀圖</span>
+                            </label>
+
+                            <button onclick="downloadChartPNG()" class="bg-slate-900 hover:bg-slate-800 text-white px-5 py-2 rounded-xl transition text-sm font-bold shadow-sm flex items-center space-x-2">
+                                <span>📸 匯出白底高畫質 PNG</span>
+                            </button>
+                        </div>
                     </div>
-                    <div class="relative w-full h-[500px]">
+                    
+                    <!-- 圖表區 -->
+                    <div class="relative w-full h-[500px] bg-white p-4 rounded-xl border border-slate-100">
                         <canvas id="fullscreenChart"></canvas>
                     </div>
                 </div>
             `;
 
+            // Canvas 純白背景 Plugin 確保匯出的圖表不為黑色或透明
+            const whiteBackgroundPlugin = {
+                id: 'customCanvasBackgroundColor',
+                beforeDraw: (chart) => {
+                    const { ctx, width, height } = chart;
+                    ctx.save();
+                    ctx.fillStyle = '#ffffff';
+                    ctx.fillRect(0, 0, width, height);
+                    ctx.restore();
+                }
+            };
+
             const ctx = document.getElementById('fullscreenChart').getContext('2d');
             if (activeChart) activeChart.destroy();
 
             activeChart = new Chart(ctx, {
+                plugins: [whiteBackgroundPlugin],
                 data: {
                     labels: months,
                     datasets: [
@@ -334,28 +345,30 @@
                             type: 'line',
                             label: `${dept} 報工工時 (Hrs)`,
                             data: deptData,
-                            borderColor: '#2563eb',
-                            backgroundColor: 'rgba(37, 99, 235, 0.08)',
-                            borderWidth: 3.5,
+                            borderColor: '#1d4ed8', // 鮮明深藍色
+                            backgroundColor: 'rgba(29, 78, 216, 0.1)',
+                            borderWidth: 4,
                             fill: false,
-                            tension: 0.25,
-                            pointRadius: 6,
-                            pointHoverRadius: 9,
+                            tension: 0.2,
+                            pointRadius: 7,
+                            pointHoverRadius: 10,
                             pointBackgroundColor: '#ffffff',
-                            pointBorderColor: '#2563eb',
-                            pointBorderWidth: 3,
-                            yAxisID: 'y'
+                            pointBorderColor: '#1d4ed8',
+                            pointBorderWidth: 4,
+                            yAxisID: 'y',
+                            order: 1
                         },
                         {
                             type: 'bar',
                             label: `${dept} 稼動率 (%)`,
                             data: utilizationData,
-                            backgroundColor: 'rgba(147, 51, 234, 0.65)',
-                            borderColor: '#7e22ce',
-                            borderWidth: 1.5,
+                            backgroundColor: 'rgba(79, 70, 229, 0.85)', // 鮮明靛紫色
+                            borderColor: '#3730a3',
+                            borderWidth: 2,
                             borderRadius: 6,
-                            barPercentage: 0.5,
-                            yAxisID: 'y1'
+                            barPercentage: 0.45,
+                            yAxisID: 'y1',
+                            order: 2
                         }
                     ]
                 },
@@ -367,15 +380,16 @@
                             display: true,
                             position: 'top',
                             labels: {
-                                font: { size: 13, weight: '600' },
+                                font: { size: 14, weight: '800' },
+                                color: '#0f172a',
                                 usePointStyle: true,
-                                padding: 20
+                                padding: 25
                             }
                         },
                         tooltip: {
-                            backgroundColor: '#1e293b',
+                            backgroundColor: '#0f172a',
                             titleFont: { size: 15, weight: 'bold' },
-                            bodyFont: { size: 14 },
+                            bodyFont: { size: 14, weight: '600' },
                             padding: 14,
                             cornerRadius: 10,
                             callbacks: {
@@ -394,9 +408,9 @@
                             display: true,
                             position: 'left',
                             beginAtZero: true,
-                            grid: { color: '#f1f5f9' },
-                            ticks: { font: { size: 13 }, color: '#2563eb' },
-                            title: { display: true, text: '工時 (Hours)', color: '#2563eb', font: { weight: '600', size: 13 } }
+                            grid: { color: '#e2e8f0', lineWidth: 1.5 },
+                            ticks: { font: { size: 14, weight: '700' }, color: '#1d4ed8' },
+                            title: { display: true, text: '工時 (Hours)', color: '#1d4ed8', font: { weight: '800', size: 14 } }
                         },
                         y1: {
                             type: 'linear',
@@ -404,27 +418,44 @@
                             position: 'right',
                             beginAtZero: true,
                             max: 100,
-                            grid: { drawOnChartArea: false }, // 避免重疊網格線
+                            grid: { drawOnChartArea: false },
                             ticks: { 
-                                font: { size: 13 }, 
-                                color: '#7e22ce',
+                                font: { size: 14, weight: '700' }, 
+                                color: '#3730a3',
                                 callback: function(value) { return value + '%'; }
                             },
-                            title: { display: true, text: '稼動率 (%)', color: '#7e22ce', font: { weight: '600', size: 13 } }
+                            title: { display: true, text: '稼動率 (%)', color: '#3730a3', font: { weight: '800', size: 14 } }
                         },
                         x: {
                             grid: { display: false },
-                            ticks: { font: { size: 13 }, color: '#64748b' },
-                            title: { display: true, text: '月份', color: '#64748b', font: { weight: '600', size: 13 } }
+                            ticks: { font: { size: 14, weight: '700' }, color: '#0f172a' },
+                            title: { display: true, text: '月份', color: '#0f172a', font: { weight: '800', size: 14 } }
                         }
                     }
                 }
             });
         }
 
+        // 切換顯示/隱藏指定 Dataset
+        window.toggleDataset = (datasetIndex, visible) => {
+            if (!activeChart) return;
+            activeChart.setDatasetVisibility(datasetIndex, visible);
+            
+            // 同步控制對應 Y 軸的顯示
+            if (datasetIndex === 0) {
+                activeChart.options.scales.y.display = visible;
+            } else if (datasetIndex === 1) {
+                activeChart.options.scales.y1.display = visible;
+            }
+            
+            activeChart.update();
+        };
+
         window.downloadChartPNG = () => {
             const canvas = document.getElementById('fullscreenChart');
             if (!canvas) return;
+            
+            // 下載白底 PNG
             const imageURL = canvas.toDataURL('image/png', 1.0);
             const link = document.createElement('a');
             link.download = `${currentDepartment}_Labor_Hours_Utilization_Trend.png`;
@@ -446,7 +477,6 @@
             XLSX.writeFile(wb, "Test_Labor_Hours_Template.xlsx");
         };
 
-        // 轉換 Excel 日期序號為年月字串的輔助函數
         function parseExcelDate(serial) {
             if (typeof serial === 'number' && serial > 30000 && serial < 60000) {
                 const utc_days = Math.floor(serial - 25569);
@@ -543,11 +573,9 @@
                 return;
             }
 
-            // 1. 取得所有不重複的部門與月份
             const departments = [...new Set(globalData.map(item => item.department))];
             const months = [...new Set(globalData.map(item => item.month))];
 
-            // 2. 轉置資料為寬表格式 (y軸: dep, x軸: 月份)
             const exportData = departments.map(dept => {
                 const row = { dep: dept };
                 months.forEach(m => {
@@ -557,7 +585,6 @@
                 return row;
             });
 
-            // 3. 匯出 Excel
             const worksheet = XLSX.utils.json_to_sheet(exportData);
             const workbook = XLSX.utils.book_new();
             XLSX.utils.book_append_sheet(workbook, worksheet, "LaborHours");
