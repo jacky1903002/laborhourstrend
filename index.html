@@ -457,7 +457,23 @@
                 alert("目前無資料可供匯出！");
                 return;
             }
-            const worksheet = XLSX.utils.json_to_sheet(globalData);
+
+            // 1. 取得所有不重複的部門與月份
+            const departments = [...new Set(globalData.map(item => item.department))];
+            const months = [...new Set(globalData.map(item => item.month))];
+
+            // 2. 轉置資料為寬表格式 (y軸: dep, x軸: 月份)
+            const exportData = departments.map(dept => {
+                const row = { dep: dept };
+                months.forEach(m => {
+                    const record = globalData.find(item => item.department === dept && item.month === m);
+                    row[m] = record ? record.hours : 0;
+                });
+                return row;
+            });
+
+            // 3. 匯出 Excel
+            const worksheet = XLSX.utils.json_to_sheet(exportData);
             const workbook = XLSX.utils.book_new();
             XLSX.utils.book_append_sheet(workbook, worksheet, "LaborHours");
             XLSX.writeFile(workbook, "Enterprise_Labor_Hours.xlsx");
