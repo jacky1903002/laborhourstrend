@@ -116,9 +116,8 @@
 
         let activeChart = null;
         let globalData = [];
-        let currentTab = ''; // 當前選中的 Tab (部門名稱 或 'SETTINGS')
+        let currentTab = '';
 
-        // 預設各站點稼動率計算係數對照表
         let utilFactorMap = {
             'metal-1': 0.81, 'metal-2': 0.82, 'metal-3': 0.79, 'lathe': 0.85, 'post treat': 0.89,
             'clean': 0.87, 'assembly': 0.81, 'edm': 0.79, 'grinding': 0.84, 'graphite': 0.89,
@@ -242,7 +241,6 @@
             const tabsContainer = document.getElementById('department-tabs');
             tabsContainer.innerHTML = '';
 
-            // 1. 各部門分頁
             departments.forEach(dept => {
                 const isActive = dept === currentTab;
                 const btn = document.createElement('button');
@@ -256,7 +254,6 @@
                 tabsContainer.appendChild(btn);
             });
 
-            // 2. 權重設定專屬分頁
             const isSettingsActive = currentTab === 'SETTINGS';
             const settingsBtn = document.createElement('button');
             settingsBtn.className = `px-6 py-3 font-semibold text-sm rounded-xl transition whitespace-nowrap ${isSettingsActive ? 'bg-amber-600 text-white shadow-md shadow-amber-600/20' : 'bg-amber-50 text-amber-800 hover:bg-amber-100 border border-amber-200'}`;
@@ -269,11 +266,9 @@
             tabsContainer.appendChild(settingsBtn);
         }
 
-        // 渲染權重調整設定頁面
         function renderSettingsView(departments) {
             const container = document.getElementById('department-fullscreen-view');
             
-            // 確保所有部門都有預設權重
             departments.forEach(dept => {
                 const key = dept.toLowerCase();
                 if (utilFactorMap[key] === undefined) {
@@ -367,8 +362,45 @@
 
             const avgUtil = utilizationData.length > 0 ? (utilizationData.reduce((a, b) => a + b, 0) / utilizationData.length).toFixed(1) : '0';
 
+            // --- 計算近 3 個月稼動率分析 ---
+            const recent3Months = months.slice(-3);
+            const recent3Util = utilizationData.slice(-3);
+            const recent3AvgUtil = recent3Util.length > 0 ? (recent3Util.reduce((a, b) => a + b, 0) / recent3Util.length).toFixed(1) : '0';
+            
+            let trendText = '';
+            let trendBadgeClass = '';
+            let diffVal = 0;
+
+            if (recent3Util.length >= 2) {
+                const first = recent3Util[0];
+                const last = recent3Util[recent3Util.length - 1];
+                diffVal = (last - first).toFixed(1);
+                
+                if (diffVal > 5) {
+                    trendText = `📈 近 3 個月稼動率呈現強勁上升趨勢（增加 ${diffVal}%），產能利用率持續顯著提升。`;
+                    trendBadgeClass = 'bg-emerald-100 text-emerald-800 border-emerald-300';
+                } else if (diffVal < -5) {
+                    trendText = `📉 近 3 個月稼動率呈下降趨勢（減少 ${Math.abs(diffVal)}%），建議關注設備及人力排班調配。`;
+                    trendBadgeClass = 'bg-rose-100 text-rose-800 border-rose-300';
+                } else {
+                    trendText = `➡️ 近 3 個月稼動率維持平穩波動（微幅變化 ${diffVal > 0 ? '+' : ''}${diffVal}%），運作狀態良好。`;
+                    trendBadgeClass = 'bg-blue-100 text-blue-800 border-blue-300';
+                }
+            } else {
+                trendText = `📊 近 3 個月平均稼動率為 ${recent3AvgUtil}%。`;
+                trendBadgeClass = 'bg-slate-100 text-slate-800 border-slate-300';
+            }
+
+            const recentMonthsDetailHTML = recent3Months.map((m, idx) => `
+                <div class="flex flex-col bg-slate-50 border border-slate-200 p-3 rounded-xl text-center">
+                    <span class="text-xs font-bold text-slate-500">${m}</span>
+                    <span class="text-lg font-black text-indigo-700 mt-0.5">${recent3Util[idx]}%</span>
+                </div>
+            `).join('');
+
             const container = document.getElementById('department-fullscreen-view');
             container.innerHTML = `
+                <!-- 頂部重點 KPI 卡片 -->
                 <div class="grid grid-cols-2 md:grid-cols-5 gap-4">
                     <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-200">
                         <span class="text-xs font-bold text-slate-500 uppercase tracking-wider">部門累計總工時</span>
@@ -379,7 +411,7 @@
                         <h4 class="text-2xl font-black text-blue-700 mt-1">${avgHours.toLocaleString()} <span class="text-sm font-normal text-slate-500">Hrs</span></h4>
                     </div>
                     <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-200">
-                        <span class="text-xs font-bold text-slate-500 uppercase tracking-wider">平均稼動率 (權重: ${factor})</span>
+                        <span class="text-xs font-bold text-slate-500 uppercase tracking-wider">全期平均稼動率</span>
                         <h4 class="text-2xl font-black text-indigo-700 mt-1">${avgUtil}%</h4>
                     </div>
                     <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-200">
@@ -392,6 +424,38 @@
                     </div>
                 </div>
 
+                <!-- 🌟 圖表上方新增：近 3 個月稼動率專屬分析卡片 -->
+                <div class="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white p-6 rounded-2xl shadow-md border border-indigo-900 space-y-4">
+                    <div class="flex justify-between items-center flex-wrap gap-3">
+                        <div class="flex items-center space-x-2">
+                            <span class="bg-indigo-600 text-white p-2 rounded-xl text-lg font-bold">🔍</span>
+                            <div>
+                                <h4 class="text-lg font-bold tracking-wide">${dept} - 近 3 個月稼動率趨勢分析</h4>
+                                <p class="text-xs text-indigo-200">分析區間: ${recent3Months.join(', ')}</p>
+                            </div>
+                        </div>
+                        <div class="bg-indigo-900/80 px-4 py-2 rounded-xl border border-indigo-700 text-center">
+                            <span class="text-xs text-indigo-200 uppercase tracking-wider block font-semibold">近 3 個月平均稼動率</span>
+                            <span class="text-2xl font-black text-amber-300">${recent3AvgUtil}%</span>
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-1 md:grid-cols-4 gap-4 items-center">
+                        <!-- 月份個別數據 -->
+                        <div class="md:col-span-2 grid grid-cols-3 gap-2">
+                            ${recentMonthsDetailHTML}
+                        </div>
+                        <!-- 分析診斷點評 -->
+                        <div class="md:col-span-2 p-3.5 bg-white/10 rounded-xl border border-white/10 backdrop-blur">
+                            <div class="inline-block px-2.5 py-0.5 rounded-full text-xs font-extrabold border mb-1.5 ${trendBadgeClass}">
+                                診斷評估
+                            </div>
+                            <p class="text-sm font-medium leading-relaxed text-slate-100">${trendText}</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 主要分析圖表區 -->
                 <div class="bg-white p-8 rounded-2xl shadow-sm border border-slate-200 space-y-6">
                     <div class="flex justify-between items-center flex-wrap gap-4 border-b border-slate-100 pb-4">
                         <div>
@@ -417,7 +481,7 @@
                         </div>
                     </div>
                     
-                    <!-- 圖表區 -->
+                    <!-- 圖表 Canvas -->
                     <div class="relative w-full h-[500px] bg-white p-4 rounded-xl border border-slate-100">
                         <canvas id="fullscreenChart"></canvas>
                     </div>
