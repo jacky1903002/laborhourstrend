@@ -83,12 +83,12 @@
 
             <!-- 各部門分頁導覽列 (Tabs) -->
             <div class="flex space-x-2 border-b border-slate-200 overflow-x-auto pb-2" id="department-tabs">
-                <!-- 動態生成部門標籤 -->
+                <!-- 動態生成部門標籤與設定頁標籤 -->
             </div>
 
             <!-- 全螢幕部門獨立視圖與分析 -->
             <div id="department-fullscreen-view" class="space-y-6">
-                <!-- 動態渲染當前部門圖表與數據分析 -->
+                <!-- 動態渲染當前部門圖表與數據分析或設定頁面 -->
             </div>
         </main>
     </div>
@@ -116,10 +116,10 @@
 
         let activeChart = null;
         let globalData = [];
-        let currentDepartment = '';
+        let currentTab = ''; // 當前選中的 Tab (部門名稱 或 'SETTINGS')
 
-        // 各站點稼動率計算係數對照表
-        const utilFactorMap = {
+        // 預設各站點稼動率計算係數對照表
+        let utilFactorMap = {
             'metal-1': 0.81, 'metal-2': 0.82, 'metal-3': 0.79, 'lathe': 0.85, 'post treat': 0.89,
             'clean': 0.87, 'assembly': 0.81, 'edm': 0.79, 'grinding': 0.84, 'graphite': 0.89,
             'package': 0.88, 'inspection': 0.86, 'lapping': 0.81, 'enp': 0.75, 'coating': 0.71,
@@ -181,6 +181,9 @@
                     if (dataObj.lastUpdated) {
                         document.getElementById('last-update-time').textContent = `最後更新: ${dataObj.lastUpdated}`;
                     }
+                    if (dataObj.factors) {
+                        utilFactorMap = { ...utilFactorMap, ...dataObj.factors };
+                    }
                     if (dataObj.records && Array.isArray(dataObj.records)) {
                         globalData = dataObj.records;
                         initDashboard(globalData);
@@ -200,45 +203,145 @@
             globalData = sampleRawData;
             initDashboard(globalData);
             document.getElementById('status-msg').textContent = "已載入預設示範數據";
+            await saveToCloud(sampleRawData, utilFactorMap);
+        };
+
+        async function saveToCloud(records, factors) {
             try {
                 const now = new Date();
                 const timeString = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`;
-                await set(ref(db, 'labor_hours_system'), { lastUpdated: timeString, records: sampleRawData });
+                await set(ref(db, 'labor_hours_system'), {
+                    lastUpdated: timeString,
+                    records: records,
+                    factors: factors
+                });
                 document.getElementById('last-update-time').textContent = `最後更新: ${timeString}`;
             } catch (err) {
-                console.warn("寫入雲端失敗:", err);
+                console.warn("同步雲端失敗:", err);
             }
-        };
+        }
 
         function initDashboard(data) {
             const departments = [...new Set(data.map(item => item.department))];
             if (departments.length === 0) return;
 
-            if (!currentDepartment || !departments.includes(currentDepartment)) {
-                currentDepartment = departments[0];
+            if (!currentTab || (!departments.includes(currentTab) && currentTab !== 'SETTINGS')) {
+                currentTab = departments[0];
             }
 
             renderTabs(departments);
-            renderDepartmentFullscreenView(currentDepartment, data);
+            
+            if (currentTab === 'SETTINGS') {
+                renderSettingsView(departments);
+            } else {
+                renderDepartmentFullscreenView(currentTab, data);
+            }
         }
 
         function renderTabs(departments) {
             const tabsContainer = document.getElementById('department-tabs');
             tabsContainer.innerHTML = '';
 
+            // 1. 各部門分頁
             departments.forEach(dept => {
-                const isActive = dept === currentDepartment;
+                const isActive = dept === currentTab;
                 const btn = document.createElement('button');
                 btn.className = `px-6 py-3 font-semibold text-sm rounded-xl transition whitespace-nowrap ${isActive ? 'bg-blue-600 text-white shadow-md shadow-blue-600/20' : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'}`;
                 btn.textContent = `📊 ${dept}`;
                 btn.onclick = () => {
-                    currentDepartment = dept;
+                    currentTab = dept;
                     renderTabs(departments);
                     renderDepartmentFullscreenView(dept, globalData);
                 };
                 tabsContainer.appendChild(btn);
             });
+
+            // 2. 權重設定專屬分頁
+            const isSettingsActive = currentTab === 'SETTINGS';
+            const settingsBtn = document.createElement('button');
+            settingsBtn.className = `px-6 py-3 font-semibold text-sm rounded-xl transition whitespace-nowrap ${isSettingsActive ? 'bg-amber-600 text-white shadow-md shadow-amber-600/20' : 'bg-amber-50 text-amber-800 hover:bg-amber-100 border border-amber-200'}`;
+            settingsBtn.textContent = `⚙️ 權重參數設定`;
+            settingsBtn.onclick = () => {
+                currentTab = 'SETTINGS';
+                renderTabs(departments);
+                renderSettingsView(departments);
+            };
+            tabsContainer.appendChild(settingsBtn);
         }
+
+        // 渲染權重調整設定頁面
+        function renderSettingsView(departments) {
+            const container = document.getElementById('department-fullscreen-view');
+            
+            // 確保所有部門都有預設權重
+            departments.forEach(dept => {
+                const key = dept.toLowerCase();
+                if (utilFactorMap[key] === undefined) {
+                    utilFactorMap[key] = 0.80;
+                }
+            });
+
+            let rowsHTML = departments.map(dept => {
+                const key = dept.toLowerCase();
+                const factorVal = utilFactorMap[key] !== undefined ? utilFactorMap[key] : 0.80;
+                return `
+                    <tr class="border-b border-slate-100 hover:bg-slate-50">
+                        <td class="py-3 px-4 font-bold text-slate-800">${dept}</td>
+                        <td class="py-3 px-4">
+                            <input type="number" step="0.01" min="0" max="2" value="${factorVal}" data-dept="${key}" class="factor-input w-32 px-3 py-1.5 bg-slate-50 border border-slate-300 rounded-lg text-slate-800 font-semibold focus:outline-none focus:ring-2 focus:ring-amber-500">
+                        </td>
+                        <td class="py-3 px-4 text-sm text-slate-500 font-mono">
+                            ${(factorVal * 100).toFixed(0)}%
+                        </td>
+                    </tr>
+                `;
+            }).join('');
+
+            container.innerHTML = `
+                <div class="bg-white p-8 rounded-2xl shadow-sm border border-slate-200 space-y-6 max-w-4xl mx-auto">
+                    <div class="flex justify-between items-center border-b border-slate-100 pb-4">
+                        <div>
+                            <span class="text-xs font-bold text-amber-700 bg-amber-100 px-3 py-1 rounded-full uppercase tracking-wider">Utilization Weight Configuration</span>
+                            <h3 class="text-2xl font-black text-slate-900 mt-2">⚙️ 各部門稼動率權重係數設定</h3>
+                            <p class="text-xs text-slate-500 mt-1">計算公式：[該月報工工時 / 區間最大工時] × 權重係數</p>
+                        </div>
+                        <button onclick="saveFactors()" class="bg-amber-600 hover:bg-amber-700 text-white px-6 py-2.5 rounded-xl transition text-sm font-bold shadow-md shadow-amber-600/20 flex items-center space-x-2">
+                            <span>💾 儲存權重設定</span>
+                        </button>
+                    </div>
+
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-left border-collapse">
+                            <thead>
+                                <tr class="bg-slate-100 text-slate-700 text-xs uppercase tracking-wider font-bold">
+                                    <th class="py-3 px-4 rounded-l-lg">部門代號 (Department)</th>
+                                    <th class="py-3 px-4">權重係數 (Factor)</th>
+                                    <th class="py-3 px-4 rounded-r-lg">基準換算比例</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${rowsHTML}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            `;
+        }
+
+        window.saveFactors = async () => {
+            const inputs = document.querySelectorAll('.factor-input');
+            inputs.forEach(input => {
+                const deptKey = input.getAttribute('data-dept');
+                const val = parseFloat(input.value);
+                if (!isNaN(val)) {
+                    utilFactorMap[deptKey] = val;
+                }
+            });
+
+            await saveToCloud(globalData, utilFactorMap);
+            document.getElementById('status-msg').textContent = '✅ 權重設定已成功更新並同步至雲端！';
+            setTimeout(() => { document.getElementById('status-msg').textContent = ''; }, 3000);
+        };
 
         function renderDepartmentFullscreenView(dept, data) {
             const months = [...new Set(data.map(item => item.month))];
@@ -256,7 +359,7 @@
             const maxMonth = months[deptData.indexOf(maxHours)] || '-';
             const minMonth = months[deptData.indexOf(minHours)] || '-';
 
-            const factor = utilFactorMap[dept.toLowerCase()] || 0.80;
+            const factor = utilFactorMap[dept.toLowerCase()] !== undefined ? utilFactorMap[dept.toLowerCase()] : 0.80;
             const utilizationData = deptData.map(hours => {
                 if (maxHours === 0) return 0;
                 return Number(((hours / maxHours) * factor * 100).toFixed(1));
@@ -276,7 +379,7 @@
                         <h4 class="text-2xl font-black text-blue-700 mt-1">${avgHours.toLocaleString()} <span class="text-sm font-normal text-slate-500">Hrs</span></h4>
                     </div>
                     <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-200">
-                        <span class="text-xs font-bold text-slate-500 uppercase tracking-wider">平均稼動率</span>
+                        <span class="text-xs font-bold text-slate-500 uppercase tracking-wider">平均稼動率 (權重: ${factor})</span>
                         <h4 class="text-2xl font-black text-indigo-700 mt-1">${avgUtil}%</h4>
                     </div>
                     <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-200">
@@ -345,7 +448,7 @@
                             type: 'line',
                             label: `${dept} 報工工時 (Hrs)`,
                             data: deptData,
-                            borderColor: '#1d4ed8', // 鮮明深藍色
+                            borderColor: '#1d4ed8',
                             backgroundColor: 'rgba(29, 78, 216, 0.1)',
                             borderWidth: 4,
                             fill: false,
@@ -362,7 +465,7 @@
                             type: 'bar',
                             label: `${dept} 稼動率 (%)`,
                             data: utilizationData,
-                            backgroundColor: 'rgba(79, 70, 229, 0.85)', // 鮮明靛紫色
+                            backgroundColor: 'rgba(79, 70, 229, 0.85)',
                             borderColor: '#3730a3',
                             borderWidth: 2,
                             borderRadius: 6,
@@ -436,12 +539,10 @@
             });
         }
 
-        // 切換顯示/隱藏指定 Dataset
         window.toggleDataset = (datasetIndex, visible) => {
             if (!activeChart) return;
             activeChart.setDatasetVisibility(datasetIndex, visible);
             
-            // 同步控制對應 Y 軸的顯示
             if (datasetIndex === 0) {
                 activeChart.options.scales.y.display = visible;
             } else if (datasetIndex === 1) {
@@ -455,10 +556,9 @@
             const canvas = document.getElementById('fullscreenChart');
             if (!canvas) return;
             
-            // 下載白底 PNG
             const imageURL = canvas.toDataURL('image/png', 1.0);
             const link = document.createElement('a');
-            link.download = `${currentDepartment}_Labor_Hours_Utilization_Trend.png`;
+            link.download = `${currentTab}_Labor_Hours_Utilization_Trend.png`;
             link.href = imageURL;
             link.click();
         };
@@ -542,20 +642,8 @@
                         return;
                     }
 
-                    const now = new Date();
-                    const timeString = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`;
-
-                    try {
-                        await set(ref(db, 'labor_hours_system'), {
-                            lastUpdated: timeString,
-                            records: parsedData
-                        });
-                        document.getElementById('last-update-time').textContent = `最後更新: ${timeString}`;
-                    } catch (cloudErr) {
-                        console.warn("雲端同步失敗:", cloudErr);
-                    }
-
                     globalData = parsedData;
+                    await saveToCloud(parsedData, utilFactorMap);
                     initDashboard(globalData);
                     document.getElementById('status-msg').textContent = `成功匯入並同步 ${parsedData.length} 筆記錄！`;
                     document.getElementById('excel-file-input').value = '';
