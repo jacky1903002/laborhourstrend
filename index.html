@@ -10,12 +10,27 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <!-- SheetJS (xlsx) -->
     <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    <!-- html2canvas for PDF rendering -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <!-- jsPDF for PDF creation -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
         body { font-family: 'Inter', sans-serif; }
     </style>
 </head>
 <body class="bg-slate-50 min-h-screen flex flex-col text-slate-800">
+
+    <!-- PDF Loading Overlay -->
+    <div id="pdf-loading-modal" class="fixed inset-0 bg-slate-900/70 backdrop-blur-sm z-50 hidden flex-col items-center justify-center text-white">
+        <div class="bg-slate-800 border border-slate-700 p-8 rounded-2xl shadow-2xl flex flex-col items-center space-y-4 max-w-sm w-full text-center">
+            <div class="w-12 h-12 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+            <div>
+                <h3 class="text-lg font-bold">正在產出全部門 PDF 報表...</h3>
+                <p id="pdf-progress-text" class="text-xs text-slate-400 mt-1">處理中，請稍候</p>
+            </div>
+        </div>
+    </div>
 
     <!-- 1. 登入畫面 (Firebase Email / Password) -->
     <div id="login-section" class="flex-grow flex items-center justify-center p-4 bg-gradient-to-br from-slate-900 via-blue-950 to-slate-900">
@@ -51,7 +66,7 @@
     <!-- 2. 主控台畫面 (登入後顯示) -->
     <div id="app-section" class="hidden flex-grow flex flex-col">
         <!-- 企業頂部導覽列 -->
-        <header class="bg-slate-900 text-white shadow-md px-8 py-4 flex justify-between items-center sticky top-0 z-50">
+        <header class="bg-slate-900 text-white shadow-md px-8 py-4 flex justify-between items-center sticky top-0 z-40">
             <div class="flex items-center space-x-4">
                 <div class="w-9 h-9 bg-blue-600 rounded-lg flex items-center justify-center font-bold shadow">LT</div>
                 <div>
@@ -76,6 +91,9 @@
                     </label>
                     <button onclick="downloadTemplate()" class="bg-amber-600 hover:bg-amber-700 text-white px-4 py-2.5 rounded-xl transition text-sm font-semibold shadow-sm">📥 下載測試範例</button>
                     <button onclick="exportExcel()" class="bg-blue-600 hover:bg-blue-700 text-white px-5 py-2.5 rounded-xl transition text-sm font-semibold shadow-sm">📤 匯出資料</button>
+                    <button onclick="exportAllChartsPDF()" class="bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2.5 rounded-xl transition text-sm font-semibold shadow-sm flex items-center space-x-1.5">
+                        <span>📄 匯出全部門圖表 PDF</span>
+                    </button>
                     <button onclick="loadSampleData()" class="bg-slate-100 hover:bg-slate-200 text-slate-700 px-4 py-2.5 rounded-xl transition text-sm font-semibold">🔄 載入預設數據</button>
                 </div>
                 <div id="status-msg" class="text-xs text-emerald-600 font-medium"></div>
@@ -91,6 +109,16 @@
                 <!-- 動態渲染當前部門圖表與數據分析或設定頁面 -->
             </div>
         </main>
+    </div>
+
+    <!-- 離線繪製 PDF 用的隱藏 Canvas 容器 -->
+    <div style="position: absolute; left: -9999px; top: -9999px; width: 1000px;">
+        <div id="pdf-render-container" class="bg-white p-6 rounded-xl border border-slate-200">
+            <h2 id="pdf-dept-title" class="text-xl font-bold text-slate-900 mb-2"></h2>
+            <div class="relative w-full h-[450px]">
+                <canvas id="pdfOffscreenChart"></canvas>
+            </div>
+        </div>
     </div>
 
     <!-- Firebase SDK & 邏輯 -->
@@ -115,6 +143,7 @@
         const db = getDatabase(app);
 
         let activeChart = null;
+        let pdfOffscreenChart = null;
         let globalData = [];
         let currentTab = '';
 
@@ -132,6 +161,52 @@
             { month: 'Jan-25', department: 'lathe', hours: 6821 }, { month: 'Feb-25', department: 'lathe', hours: 6332 }, { month: 'Mar-25', department: 'lathe', hours: 3897 }, { month: 'Apr-25', department: 'lathe', hours: 12695 }, { month: 'May-25', department: 'lathe', hours: 10128 }, { month: 'Jun-25', department: 'lathe', hours: 8197 },
             { month: 'Jan-25', department: 'post treat', hours: 15415 }, { month: 'Feb-25', department: 'post treat', hours: 10277 }, { month: 'Mar-25', department: 'post treat', hours: 17769 }, { month: 'Apr-25', department: 'post treat', hours: 7559 }, { month: 'May-25', department: 'post treat', hours: 10738 }, { month: 'Jun-25', department: 'post treat', hours: 5174 }
         ];
+
+        // --- 通用日期格式化函式 (將 2025/1/1, 2025-01-01, 數值, 等轉為 Jan-25 格式) ---
+        function formatToMonthYear(val) {
+            if (val === null || val === undefined) return '';
+            const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+            // 處理 Excel 數字日期序列號
+            if (typeof val === 'number' && val > 30000 && val < 60000) {
+                const utc_days = Math.floor(val - 25569);
+                const dateObj = new Date(utc_days * 86400 * 1000);
+                const mStr = months[dateObj.getUTCMonth()];
+                const yStr = String(dateObj.getUTCFullYear()).slice(-2);
+                return `${mStr}-${yStr}`;
+            }
+
+            const str = String(val).trim();
+
+            // 若已經是 Jan-25 格式
+            if (/^[A-Za-z]{3}-\d{2}$/.test(str)) {
+                return str;
+            }
+
+            // 嘗試解析 YYYY/M/D 或 YYYY-M-D
+            const dateParts = str.split(/[\/\-\.]/);
+            if (dateParts.length >= 2) {
+                let year = parseInt(dateParts[0], 10);
+                let monthIdx = parseInt(dateParts[1], 10) - 1;
+
+                if (!isNaN(year) && !isNaN(monthIdx) && monthIdx >= 0 && monthIdx < 12) {
+                    if (year < 100) year += 2000;
+                    const mStr = months[monthIdx];
+                    const yStr = String(year).slice(-2);
+                    return `${mStr}-${yStr}`;
+                }
+            }
+
+            // 標準 JS Date 解析備用方案
+            const parsedDate = new Date(str);
+            if (!isNaN(parsedDate.getTime())) {
+                const mStr = months[parsedDate.getMonth()];
+                const yStr = String(parsedDate.getFullYear()).slice(-2);
+                return `${mStr}-${yStr}`;
+            }
+
+            return str;
+        }
 
         onAuthStateChanged(auth, (user) => {
             if (user) {
@@ -184,25 +259,30 @@
                         utilFactorMap = { ...utilFactorMap, ...dataObj.factors };
                     }
                     if (dataObj.records && Array.isArray(dataObj.records)) {
-                        globalData = dataObj.records;
+                        // 確保格式統整為 Jan-25 與整數
+                        globalData = dataObj.records.map(r => ({
+                            ...r,
+                            month: formatToMonthYear(r.month),
+                            hours: Math.round(Number(r.hours) || 0)
+                        }));
                         initDashboard(globalData);
                         return;
                     }
                 }
-                globalData = sampleRawData;
+                globalData = sampleRawData.map(r => ({ ...r, month: formatToMonthYear(r.month), hours: Math.round(r.hours) }));
                 initDashboard(globalData);
             } catch (e) {
                 console.warn("載入雲端失敗，使用範例數據:", e);
-                globalData = sampleRawData;
+                globalData = sampleRawData.map(r => ({ ...r, month: formatToMonthYear(r.month), hours: Math.round(r.hours) }));
                 initDashboard(globalData);
             }
         }
 
         window.loadSampleData = async () => {
-            globalData = sampleRawData;
+            globalData = sampleRawData.map(r => ({ ...r, month: formatToMonthYear(r.month), hours: Math.round(r.hours) }));
             initDashboard(globalData);
             document.getElementById('status-msg').textContent = "已載入預設示範數據";
-            await saveToCloud(sampleRawData, utilFactorMap);
+            await saveToCloud(globalData, utilFactorMap);
         };
 
         async function saveToCloud(records, factors) {
@@ -344,10 +424,10 @@
             
             const deptData = months.map(m => {
                 const found = deptRecords.find(item => item.month === m);
-                return found ? Number(found.hours) : 0;
+                return found ? Math.round(Number(found.hours)) : 0;
             });
 
-            const totalHours = deptData.reduce((a, b) => a + b, 0);
+            const totalHours = Math.round(deptData.reduce((a, b) => a + b, 0));
             const avgHours = Math.round(totalHours / (months.length || 1));
             const maxHours = Math.max(...deptData);
             const minHours = Math.min(...deptData);
@@ -424,7 +504,7 @@
                     </div>
                 </div>
 
-                <!-- 🌟 圖表上方新增：近 3 個月稼動率專屬分析卡片 -->
+                <!-- 🌟 近 3 個月稼動率專屬分析卡片 -->
                 <div class="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white p-6 rounded-2xl shadow-md border border-indigo-900 space-y-4">
                     <div class="flex justify-between items-center flex-wrap gap-3">
                         <div class="flex items-center space-x-2">
@@ -463,7 +543,7 @@
                             <h3 class="text-2xl font-black text-slate-900 mt-2">${dept} - 跨年月工時與稼動率分析</h3>
                         </div>
                         
-                        <!-- 控制按鈕區：工時隱藏、稼動率隱藏、下載 PNG -->
+                        <!-- 控制按鈕區 -->
                         <div class="flex items-center space-x-3 flex-wrap gap-y-2">
                             <label class="flex items-center space-x-2 bg-blue-50 border border-blue-200 text-blue-900 px-4 py-2 rounded-xl text-sm font-bold cursor-pointer hover:bg-blue-100 transition">
                                 <input type="checkbox" id="toggle-hours-cb" checked onchange="toggleDataset(0, this.checked)" class="w-4 h-4 text-blue-600 rounded">
@@ -488,7 +568,6 @@
                 </div>
             `;
 
-            // Canvas 純白背景 Plugin 確保匯出的圖表不為黑色或透明
             const whiteBackgroundPlugin = {
                 id: 'customCanvasBackgroundColor',
                 beforeDraw: (chart) => {
@@ -564,7 +643,7 @@
                                     if (context.dataset.yAxisID === 'y1') {
                                         return `${context.dataset.label}: ${context.raw}%`;
                                     }
-                                    return `${context.dataset.label}: ${context.raw.toLocaleString()} Hrs`;
+                                    return `${context.dataset.label}: ${Math.round(context.raw).toLocaleString()} Hrs`;
                                 }
                             }
                         }
@@ -576,7 +655,11 @@
                             position: 'left',
                             beginAtZero: true,
                             grid: { color: '#e2e8f0', lineWidth: 1.5 },
-                            ticks: { font: { size: 14, weight: '700' }, color: '#1d4ed8' },
+                            ticks: { 
+                                font: { size: 14, weight: '700' }, 
+                                color: '#1d4ed8',
+                                callback: function(val) { return Math.round(val).toLocaleString(); }
+                            },
                             title: { display: true, text: '工時 (Hours)', color: '#1d4ed8', font: { weight: '800', size: 14 } }
                         },
                         y1: {
@@ -627,32 +710,37 @@
             link.click();
         };
 
+        // --- 匯出 Excel 範例 (統一為數值 + 取至小數點 0 位) ---
         window.downloadTemplate = () => {
             const templateData = [
-                { dep: 'metal-1', 'Jan-25': 18211, 'Feb-25': 6475, 'Mar-25': 7333, 'Apr-25': 18035 },
-                { dep: 'metal-2', 'Jan-25': 11841, 'Feb-25': 8641, 'Mar-25': 3842, 'Apr-25': 14206 },
-                { dep: 'metal-3', 'Jan-25': 16702, 'Feb-25': 18020, 'Mar-25': 18674, 'Apr-25': 14188 },
-                { dep: 'lathe', 'Jan-25': 6821, 'Feb-25': 6332, 'Mar-25': 3897, 'Apr-25': 12695 },
-                { dep: 'post treat', 'Jan-25': 15415, 'Feb-25': 10277, 'Mar-25': 17769, 'Apr-25': 7559 }
+                { dep: 'metal-1', '2025/1/1': 18211, '2025/2/1': 6475, '2025/3/1': 7333, '2025/4/1': 18035 },
+                { dep: 'metal-2', '2025/1/1': 11841, '2025/2/1': 8641, '2025/3/1': 3842, '2025/4/1': 14206 },
+                { dep: 'metal-3', '2025/1/1': 16702, '2025/2/1': 18020, '2025/3/1': 18674, '2025/4/1': 14188 },
+                { dep: 'lathe', '2025/1/1': 6821, '2025/2/1': 6332, '2025/3/1': 3897, '2025/4/1': 12695 },
+                { dep: 'post treat', '2025/1/1': 15415, '2025/2/1': 10277, '2025/3/1': 17769, '2025/4/1': 7559 }
             ];
+            
             const ws = XLSX.utils.json_to_sheet(templateData);
+
+            // 格式設定：所有數字儲存格皆設為數值 (t:'n') 並套用整數格式 '#,##0'
+            const range = XLSX.utils.decode_range(ws['!ref']);
+            for (let R = range.s.r + 1; R <= range.e.r; ++R) {
+                for (let C = range.s.c + 1; C <= range.e.c; ++C) {
+                    const cellRef = XLSX.utils.encode_cell({ r: R, c: C });
+                    if (ws[cellRef] && typeof ws[cellRef].v === 'number') {
+                        ws[cellRef].t = 'n';
+                        ws[cellRef].v = Math.round(ws[cellRef].v);
+                        ws[cellRef].z = '#,##0';
+                    }
+                }
+            }
+
             const wb = XLSX.utils.book_new();
             XLSX.utils.book_append_sheet(wb, ws, "LaborHours");
             XLSX.writeFile(wb, "Test_Labor_Hours_Template.xlsx");
         };
 
-        function parseExcelDate(serial) {
-            if (typeof serial === 'number' && serial > 30000 && serial < 60000) {
-                const utc_days = Math.floor(serial - 25569);
-                const dateObj = new Date(utc_days * 86400 * 1000);
-                const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-                const mStr = months[dateObj.getUTCMonth()];
-                const yStr = String(dateObj.getUTCFullYear()).slice(-2);
-                return `${mStr}-${yStr}`;
-            }
-            return String(serial).trim();
-        }
-
+        // --- 匯入 Excel (支援 2025/1/1, 2025/01/01 及 Jan-25 轉成統一 Jan-25) ---
         window.importExcel = async (e) => {
             const file = e.target.files[0];
             if (!file) return;
@@ -691,11 +779,11 @@
                             const rawMonth = headers[j];
                             const hours = row[j];
                             if (rawMonth !== undefined && rawMonth !== null && hours !== undefined && hours !== null && !isNaN(hours)) {
-                                const month = parseExcelDate(rawMonth);
+                                const formattedMonth = formatToMonthYear(rawMonth);
                                 parsedData.push({
-                                    month: month,
+                                    month: formattedMonth,
                                     department: String(department).trim(),
-                                    hours: Number(hours)
+                                    hours: Math.round(Number(hours)) // 取至小數點 0 位 (整數)
                                 });
                             }
                         }
@@ -719,6 +807,7 @@
             reader.readAsArrayBuffer(file);
         };
 
+        // --- 匯出 Excel 資料 (數值格式化小數點 0 位) ---
         window.exportExcel = async () => {
             if (globalData.length === 0) {
                 alert("目前無資料可供匯出！");
@@ -732,15 +821,222 @@
                 const row = { dep: dept };
                 months.forEach(m => {
                     const record = globalData.find(item => item.department === dept && item.month === m);
-                    row[m] = record ? record.hours : 0;
+                    row[m] = record ? Math.round(Number(record.hours)) : 0;
                 });
                 return row;
             });
 
             const worksheet = XLSX.utils.json_to_sheet(exportData);
+
+            // 設定數值與整數格式 '#,##0'
+            const range = XLSX.utils.decode_range(worksheet['!ref']);
+            for (let R = range.s.r + 1; R <= range.e.r; ++R) {
+                for (let C = range.s.c + 1; C <= range.e.c; ++C) {
+                    const cellRef = XLSX.utils.encode_cell({ r: R, c: C });
+                    if (worksheet[cellRef] && typeof worksheet[cellRef].v === 'number') {
+                        worksheet[cellRef].t = 'n';
+                        worksheet[cellRef].v = Math.round(worksheet[cellRef].v);
+                        worksheet[cellRef].z = '#,##0';
+                    }
+                }
+            }
+
             const workbook = XLSX.utils.book_new();
             XLSX.utils.book_append_sheet(workbook, worksheet, "LaborHours");
             XLSX.writeFile(workbook, "Enterprise_Labor_Hours.xlsx");
+        };
+
+        // --- 🌟 一鍵匯出全部門圖表 PDF 功能 ---
+        window.exportAllChartsPDF = async () => {
+            if (!globalData || globalData.length === 0) {
+                alert("目前無可匯出的部門數據！");
+                return;
+            }
+
+            const departments = [...new Set(globalData.map(item => item.department))];
+            const months = [...new Set(globalData.map(item => item.month))];
+
+            if (departments.length === 0) return;
+
+            const modal = document.getElementById('pdf-loading-modal');
+            const progressText = document.getElementById('pdf-progress-text');
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+
+            try {
+                const { jsPDF } = window.jspdf;
+                const pdf = new jsPDF({
+                    orientation: 'landscape',
+                    unit: 'mm',
+                    format: 'a4'
+                });
+
+                const pdfWidth = pdf.internal.pageSize.getWidth();
+                const pdfHeight = pdf.internal.pageSize.getHeight();
+
+                // 1. 封面與摘要頁
+                pdf.setFillColor(15, 23, 42); // slate-900
+                pdf.rect(0, 0, pdfWidth, pdfHeight, 'F');
+
+                pdf.setTextColor(255, 255, 255);
+                pdf.setFontSize(24);
+                pdf.setFont("helvetica", "bold");
+                pdf.text("Enterprise Labor Hours & Utilization Report", 20, 35);
+
+                pdf.setFontSize(12);
+                pdf.setTextColor(148, 163, 184); // slate-400
+                pdf.text(`Generated Date: ${new Date().toLocaleDateString('zh-TW')} | Total Departments: ${departments.length}`, 20, 47);
+
+                pdf.setDrawColor(51, 65, 85);
+                pdf.line(20, 55, pdfWidth - 20, 55);
+
+                // 總體指標簡介
+                pdf.setFontSize(14);
+                pdf.setTextColor(241, 245, 249);
+                pdf.text("Executive Analytics Overview", 20, 70);
+
+                let startY = 85;
+                const grandTotalHours = globalData.reduce((acc, curr) => acc + Math.round(curr.hours), 0);
+                
+                pdf.setFontSize(11);
+                pdf.setTextColor(203, 213, 225);
+                pdf.text(`• Total Enterprise Labor Hours Across All Departments: ${grandTotalHours.toLocaleString()} Hrs`, 25, startY);
+                pdf.text(`• Date Horizon Analysed: ${months.join(', ')}`, 25, startY + 10);
+                pdf.text(`• Department Count: ${departments.length}`, 25, startY + 20);
+
+                const offscreenCanvas = document.getElementById('pdfOffscreenChart');
+                const titleElem = document.getElementById('pdf-dept-title');
+
+                // 2. 逐一繪製每個部門圖表並新增 PDF 頁面
+                for (let i = 0; i < departments.length; i++) {
+                    const dept = departments[i];
+                    progressText.textContent = `正在處理部門 (${i + 1}/${departments.length}): ${dept}`;
+
+                    const deptRecords = globalData.filter(item => item.department === dept);
+                    const deptData = months.map(m => {
+                        const found = deptRecords.find(item => item.month === m);
+                        return found ? Math.round(Number(found.hours)) : 0;
+                    });
+
+                    const maxHours = Math.max(...deptData, 1);
+                    const factor = utilFactorMap[dept.toLowerCase()] !== undefined ? utilFactorMap[dept.toLowerCase()] : 0.80;
+                    const utilizationData = deptData.map(hours => Number(((hours / maxHours) * factor * 100).toFixed(1)));
+
+                    // 銷毀前一個 offscreen 圖表
+                    if (pdfOffscreenChart) pdfOffscreenChart.destroy();
+
+                    titleElem.textContent = `Department Analytics: ${dept}`;
+
+                    const whiteBackgroundPlugin = {
+                        id: 'pdfWhiteBG',
+                        beforeDraw: (chart) => {
+                            const { ctx, width, height } = chart;
+                            ctx.save();
+                            ctx.fillStyle = '#ffffff';
+                            ctx.fillRect(0, 0, width, height);
+                            ctx.restore();
+                        }
+                    };
+
+                    const ctx = offscreenCanvas.getContext('2d');
+                    pdfOffscreenChart = new Chart(ctx, {
+                        plugins: [whiteBackgroundPlugin],
+                        data: {
+                            labels: months,
+                            datasets: [
+                                {
+                                    type: 'line',
+                                    label: `${dept} Hours (Hrs)`,
+                                    data: deptData,
+                                    borderColor: '#1d4ed8',
+                                    backgroundColor: 'rgba(29, 78, 216, 0.1)',
+                                    borderWidth: 3,
+                                    fill: false,
+                                    tension: 0.2,
+                                    pointRadius: 6,
+                                    pointBackgroundColor: '#ffffff',
+                                    pointBorderColor: '#1d4ed8',
+                                    pointBorderWidth: 3,
+                                    yAxisID: 'y'
+                                },
+                                {
+                                    type: 'bar',
+                                    label: `${dept} Utilization (%)`,
+                                    data: utilizationData,
+                                    backgroundColor: 'rgba(79, 70, 229, 0.85)',
+                                    borderColor: '#3730a3',
+                                    borderWidth: 2,
+                                    borderRadius: 4,
+                                    barPercentage: 0.5,
+                                    yAxisID: 'y1'
+                                }
+                            ]
+                        },
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            animation: false, // 停用動畫以利截圖
+                            plugins: {
+                                legend: { display: true, position: 'top' }
+                            },
+                            scales: {
+                                y: {
+                                    type: 'linear',
+                                    position: 'left',
+                                    beginAtZero: true,
+                                    ticks: { callback: (v) => Math.round(v).toLocaleString() }
+                                },
+                                y1: {
+                                    type: 'linear',
+                                    position: 'right',
+                                    beginAtZero: true,
+                                    max: 100,
+                                    ticks: { callback: (v) => v + '%' }
+                                }
+                            }
+                        }
+                    });
+
+                    // 稍作延遲確保 Canvas 完成繪製
+                    await new Promise(resolve => setTimeout(resolve, 150));
+
+                    const containerElem = document.getElementById('pdf-render-container');
+                    const canvasCaptured = await html2canvas(containerElem, { scale: 2 });
+                    const imgData = canvasCaptured.toDataURL('image/png');
+
+                    pdf.addPage('a4', 'landscape');
+
+                    // 頁尾 / 頁眉裝飾
+                    pdf.setFillColor(248, 250, 252);
+                    pdf.rect(0, 0, pdfWidth, pdfHeight, 'F');
+
+                    pdf.setFillColor(30, 41, 59);
+                    pdf.rect(0, 0, pdfWidth, 16, 'F');
+                    pdf.setFontSize(10);
+                    pdf.setTextColor(255, 255, 255);
+                    pdf.text(`Enterprise Labor Hours Analytics | ${dept}`, 15, 11);
+
+                    pdf.setFontSize(9);
+                    pdf.setTextColor(148, 163, 184);
+                    pdf.text(`Page ${i + 2} of ${departments.length + 1}`, pdfWidth - 30, 11);
+
+                    // 插入高解析圖表圖片
+                    const margin = 15;
+                    const imgWidth = pdfWidth - (margin * 2);
+                    const imgHeight = (canvasCaptured.height * imgWidth) / canvasCaptured.width;
+
+                    pdf.addImage(imgData, 'PNG', margin, 25, imgWidth, Math.min(imgHeight, pdfHeight - 45));
+                }
+
+                pdf.save(`Enterprise_Labor_Hours_All_Departments_Analytics.pdf`);
+                document.getElementById('status-msg').textContent = '✅ 已成功匯出全部門 PDF 報表！';
+            } catch (err) {
+                console.error("PDF 匯出失敗:", err);
+                alert("PDF 匯出過程發生錯誤，請稍後重試。");
+            } finally {
+                modal.classList.add('hidden');
+                modal.classList.remove('flex');
+            }
         };
     </script>
 </body>
