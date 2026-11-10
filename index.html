@@ -91,8 +91,8 @@
                     </label>
                     <button onclick="downloadTemplate()" class="bg-amber-600 hover:bg-amber-700 text-white px-4 py-2.5 rounded-xl transition text-sm font-semibold shadow-sm">📥 下載測試範例</button>
                     <button onclick="exportExcel()" class="bg-blue-600 hover:bg-blue-700 text-white px-5 py-2.5 rounded-xl transition text-sm font-semibold shadow-sm">📤 匯出資料</button>
-                    <button onclick="exportAllChartsPDF()" class="bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2.5 rounded-xl transition text-sm font-semibold shadow-sm flex items-center space-x-1.5">
-                        <span>📄 匯出全部門圖表 PDF</span>
+                    <button onclick="exportTop20ChartsPDF()" class="bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2.5 rounded-xl transition text-sm font-semibold shadow-sm flex items-center space-x-1.5">
+                        <span>📄 匯出前20個部門圖表 PDF</span>
                     </button>
                     <button onclick="loadSampleData()" class="bg-slate-100 hover:bg-slate-200 text-slate-700 px-4 py-2.5 rounded-xl transition text-sm font-semibold">🔄 載入預設數據</button>
                 </div>
@@ -846,14 +846,18 @@
             XLSX.writeFile(workbook, "Enterprise_Labor_Hours.xlsx");
         };
 
-        // --- 🌟 一鍵匯出全部門圖表 PDF 功能 ---
-        window.exportAllChartsPDF = async () => {
+        // --- 🌟 一鍵匯出前20個部門圖表 PDF 功能 (metal-1 ~ ep) ---
+        window.exportTop20ChartsPDF = async () => {
             if (!globalData || globalData.length === 0) {
                 alert("目前無可匯出的部門數據！");
                 return;
             }
 
-            const departments = [...new Set(globalData.map(item => item.department))];
+            let departments = [...new Set(globalData.map(item => item.department))];
+            
+            // 限制最多僅匯出前 20 個部門 (如 metal-1 到 ep)
+            departments = departments.slice(0, 20);
+
             const months = [...new Set(globalData.map(item => item.month))];
 
             if (departments.length === 0) return;
@@ -885,7 +889,7 @@
 
                 pdf.setFontSize(12);
                 pdf.setTextColor(148, 163, 184); // slate-400
-                pdf.text(`Generated Date: ${new Date().toLocaleDateString('zh-TW')} | Total Departments: ${departments.length}`, 20, 47);
+                pdf.text(`Generated Date: ${new Date().toLocaleDateString('zh-TW')} | Top ${departments.length} Departments Analytics (metal-1 ~ ep)`, 20, 47);
 
                 pdf.setDrawColor(51, 65, 85);
                 pdf.line(20, 55, pdfWidth - 20, 55);
@@ -893,21 +897,22 @@
                 // 總體指標簡介
                 pdf.setFontSize(14);
                 pdf.setTextColor(241, 245, 249);
-                pdf.text("Executive Analytics Overview", 20, 70);
+                pdf.text("Executive Analytics Overview (Top 20 Departments)", 20, 70);
 
                 let startY = 85;
-                const grandTotalHours = globalData.reduce((acc, curr) => acc + Math.round(curr.hours), 0);
+                const filteredRecords = globalData.filter(r => departments.includes(r.department));
+                const grandTotalHours = filteredRecords.reduce((acc, curr) => acc + Math.round(curr.hours), 0);
                 
                 pdf.setFontSize(11);
                 pdf.setTextColor(203, 213, 225);
-                pdf.text(`• Total Enterprise Labor Hours Across All Departments: ${grandTotalHours.toLocaleString()} Hrs`, 25, startY);
+                pdf.text(`• Total Labor Hours Across Selected Top ${departments.length} Departments: ${grandTotalHours.toLocaleString()} Hrs`, 25, startY);
                 pdf.text(`• Date Horizon Analysed: ${months.join(', ')}`, 25, startY + 10);
-                pdf.text(`• Department Count: ${departments.length}`, 25, startY + 20);
+                pdf.text(`• Target Departments: ${departments.join(', ')}`, 25, startY + 20);
 
                 const offscreenCanvas = document.getElementById('pdfOffscreenChart');
                 const titleElem = document.getElementById('pdf-dept-title');
 
-                // 2. 逐一繪製每個部門圖表並新增 PDF 頁面
+                // 2. 逐一繪製前20個部門圖表並新增 PDF 頁面
                 for (let i = 0; i < departments.length; i++) {
                     const dept = departments[i];
                     progressText.textContent = `正在處理部門 (${i + 1}/${departments.length}): ${dept}`;
@@ -975,7 +980,7 @@
                         options: {
                             responsive: true,
                             maintainAspectRatio: false,
-                            animation: false, // 停用動畫以利截圖
+                            animation: false,
                             plugins: {
                                 legend: { display: true, position: 'top' }
                             },
@@ -997,7 +1002,6 @@
                         }
                     });
 
-                    // 稍作延遲確保 Canvas 完成繪製
                     await new Promise(resolve => setTimeout(resolve, 150));
 
                     const containerElem = document.getElementById('pdf-render-container');
@@ -1006,7 +1010,6 @@
 
                     pdf.addPage('a4', 'landscape');
 
-                    // 頁尾 / 頁眉裝飾
                     pdf.setFillColor(248, 250, 252);
                     pdf.rect(0, 0, pdfWidth, pdfHeight, 'F');
 
@@ -1020,7 +1023,6 @@
                     pdf.setTextColor(148, 163, 184);
                     pdf.text(`Page ${i + 2} of ${departments.length + 1}`, pdfWidth - 30, 11);
 
-                    // 插入高解析圖表圖片
                     const margin = 15;
                     const imgWidth = pdfWidth - (margin * 2);
                     const imgHeight = (canvasCaptured.height * imgWidth) / canvasCaptured.width;
@@ -1028,8 +1030,8 @@
                     pdf.addImage(imgData, 'PNG', margin, 25, imgWidth, Math.min(imgHeight, pdfHeight - 45));
                 }
 
-                pdf.save(`Enterprise_Labor_Hours_All_Departments_Analytics.pdf`);
-                document.getElementById('status-msg').textContent = '✅ 已成功匯出全部門 PDF 報表！';
+                pdf.save(`Enterprise_Labor_Hours_Top20_Departments_Analytics.pdf`);
+                document.getElementById('status-msg').textContent = `✅ 已成功匯出前 ${departments.length} 個部門 PDF 報表！`;
             } catch (err) {
                 console.error("PDF 匯出失敗:", err);
                 alert("PDF 匯出過程發生錯誤，請稍後重試。");
